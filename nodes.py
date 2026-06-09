@@ -35,12 +35,12 @@ class AnimaArtistTagSelector:
         if opt_prompt and opt_prompt.strip():
             opt_prompt = opt_prompt.strip()
             if mode == "append":
-                # 追加模式：在已有的 prompt 后面追加画师 tag，末尾补上逗号
+                # 追加模式：选择的画师 tag 在前，外接的 opt_prompt 在后，末尾补上逗号
                 if joined_artists:
                     if opt_prompt.endswith(","):
-                        final_text = f"{opt_prompt} {joined_artists}, "
+                        final_text = f"{joined_artists}, {opt_prompt}"
                     else:
-                        final_text = f"{opt_prompt}, {joined_artists}, "
+                        final_text = f"{joined_artists}, {opt_prompt}, "
                 else:
                     final_text = opt_prompt
             else:
@@ -153,11 +153,12 @@ class AnimaCharacterTagSelector:
         if opt_prompt and opt_prompt.strip():
             opt_prompt = opt_prompt.strip()
             if mode == "append":
+                # 追加模式：选择的角色 tag 在前，外接的 opt_prompt 在后，末尾补上逗号
                 if joined_characters:
                     if opt_prompt.endswith(","):
-                        final_text = f"{opt_prompt} {joined_characters}, "
+                        final_text = f"{joined_characters}, {opt_prompt}"
                     else:
-                        final_text = f"{opt_prompt}, {joined_characters}, "
+                        final_text = f"{joined_characters}, {opt_prompt}, "
                 else:
                     final_text = opt_prompt
             else:

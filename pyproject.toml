@@ -1,6 +1,6 @@
 [project]
 name = "comfyui-anima-tools"
-version = "1.0.4"
+version = "1.0.5"
 description = "专为 ComfyUI 设计的高性能、多维度二次元画师与角色视觉选择套件 (Artist & Character Visual Selector)"
 readme = "README.md"
 license = { text = "MIT" }
