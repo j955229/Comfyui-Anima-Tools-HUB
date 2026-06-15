@@ -1,5 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { t } from "./i18n.js";
+import { markImageLoaded, isImageLoaded } from "./anima_image_utils.js";
 
 app.registerExtension({
     name: "AnimaMultiLoraLoader.extension",
@@ -219,14 +220,115 @@ function updateJsonValue(node) {
 // Global caching variables
 let globalLoraConfig = null;
 let globalLocalLoras = null;
+let globalLoraManifest = null;
 let globalFavorites = null;
+const LORA_MANIFEST_WIDTH = 320;
+const LORA_MANIFEST_CACHE_KEY = "loraManifest:v1:320";
+
+function cacheGetSync(key) {
+    try {
+        const raw = localStorage.getItem(`anima-cache:${key}`);
+        return raw ? JSON.parse(raw) : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+function cacheSetSync(key, value) {
+    try {
+        localStorage.setItem(`anima-cache:${key}`, JSON.stringify(value));
+    } catch (_) {}
+}
+
+function openAnimaCacheDb() {
+    return new Promise((resolve) => {
+        if (!("indexedDB" in window)) {
+            resolve(null);
+            return;
+        }
+        const req = indexedDB.open("AnimaToolsCache", 1);
+        req.onupgradeneeded = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains("kv")) {
+                db.createObjectStore("kv");
+            }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+    });
+}
+
+async function cacheGet(key) {
+    const syncValue = cacheGetSync(key);
+    if (syncValue) return syncValue;
+    const db = await openAnimaCacheDb();
+    if (!db) return null;
+    return new Promise((resolve) => {
+        const tx = db.transaction("kv", "readonly");
+        const req = tx.objectStore("kv").get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+    });
+}
+
+async function cacheSet(key, value) {
+    cacheSetSync(key, value);
+    const db = await openAnimaCacheDb();
+    if (!db) return;
+    return new Promise((resolve) => {
+        const tx = db.transaction("kv", "readwrite");
+        tx.objectStore("kv").put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+    });
+}
+
+function clearStaleLoader(loader, delay = 8000) {
+    if (!loader) return;
+    setTimeout(() => {
+        if (loader.isConnected) {
+            loader.remove();
+        }
+    }, delay);
+}
+
+function createPreviewLoader(container, delay = 160) {
+    const loader = document.createElement("div");
+    const spinner = document.createElement("div");
+    spinner.className = "anima-spinner";
+    loader.appendChild(spinner);
+    const originalRemove = loader.remove.bind(loader);
+    const timer = setTimeout(() => {
+        if (loader.dataset.cancelled === "1") return;
+        if (container.isConnected && !loader.isConnected) {
+            container.appendChild(loader);
+        }
+    }, delay);
+    loader.remove = () => {
+        loader.dataset.cancelled = "1";
+        clearTimeout(timer);
+        originalRemove();
+    };
+    clearStaleLoader(loader);
+    return loader;
+}
+
+const INITIAL_CARD_PREVIEW_LOADS = 16;
+const LORA_CARD_PREVIEW_WIDTH = 450;
+const LORA_DETAIL_PREVIEW_WIDTH = 450;
+const LORA_LOCAL_CARD_PREVIEW_WIDTH = LORA_MANIFEST_WIDTH;
+const CIVITAI_SEARCH_CACHE_TTL = 24 * 60 * 60 * 1000;
+const CIVITAI_SEARCH_CACHE_VERSION = "v2-category-meili";
 const civitaiSearchCache = {
+    key(url) {
+        return `${CIVITAI_SEARCH_CACHE_VERSION}:${url}`;
+    },
     get(url) {
         try {
             const raw = localStorage.getItem("anima-civitai-search-cache");
             if (!raw) return null;
             const cache = JSON.parse(raw);
-            return cache[url] || null;
+            return cache[this.key(url)] || null;
         } catch (e) {
             return null;
         }
@@ -235,7 +337,7 @@ const civitaiSearchCache = {
         try {
             const raw = localStorage.getItem("anima-civitai-search-cache");
             let cache = raw ? JSON.parse(raw) : {};
-            cache[url] = entry;
+            cache[this.key(url)] = entry;
             
             // Limit entries to prevent localStorage bloat
             const keys = Object.keys(cache);
@@ -255,14 +357,32 @@ const civitaiSearchCache = {
             const raw = localStorage.getItem("anima-civitai-search-cache");
             if (!raw) return;
             let cache = JSON.parse(raw);
-            delete cache[url];
+            delete cache[this.key(url)];
             localStorage.setItem("anima-civitai-search-cache", JSON.stringify(cache));
         } catch (e) {}
     }
 };
 
-function getOptimizedImageUrl(url, targetWidth = 320) {
+function extractCivitaiImageId(url) {
+    if (!url || !url.includes("civitai")) return "";
+    try {
+        const parsed = new URL(url);
+        const cacheMatch = parsed.pathname.match(/\/civitai-media-cache\/([^/]+)/);
+        if (cacheMatch) return cacheMatch[1];
+        const uuidMatch = parsed.pathname.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+        return uuidMatch ? uuidMatch[0] : "";
+    } catch (_) {
+        const uuidMatch = String(url).match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+        return uuidMatch ? uuidMatch[0] : "";
+    }
+}
+
+function getOptimizedImageUrl(url, targetWidth = LORA_CARD_PREVIEW_WIDTH) {
     if (!url) return "";
+    const imageId = extractCivitaiImageId(url);
+    if (imageId) {
+        return `https://image-b2.civitai.com/file/civitai-media-cache/${imageId}/${targetWidth}x%3Cauto%3E_so`;
+    }
     if (url.includes("civitai.com") || url.includes("civitai")) {
         if (url.includes("/width=")) {
             url = url.replace(/\/width=\d+/g, `/width=${targetWidth}`);
@@ -273,6 +393,11 @@ function getOptimizedImageUrl(url, targetWidth = 320) {
         }
     }
     return url;
+}
+
+function getPreviewImageUrl(image, targetWidth = LORA_CARD_PREVIEW_WIDTH) {
+    if (!image) return "";
+    return getOptimizedImageUrl(image.thumbnailUrl || image.url || "", targetWidth);
 }
 
 function getSkeletonHtml(count = 40) {
@@ -294,6 +419,8 @@ async function openLoraSelectorModal(node) {
     // State
     let searchResults = [];
     let localLoras = [];
+    let loraManifestItems = [];
+    let loraManifestMap = new Map();
     let activeDownloads = {};
     let config = { custom_lora_dir: "", civitai_api_key: "" };
     
@@ -307,13 +434,97 @@ async function openLoraSelectorModal(node) {
 
     let query = "";
     let cursor = "";
+    let pageHistory = [];
+    let currentPageState = null;
     let isSearching = false;
+    let searchRequestSeq = 0;
     let pollInterval = null;
     
     let currentCategory = "all"; // 'all', 'style', 'character', 'clothing', 'background', 'downloaded', 'favorites'
     let currentSort = "Highest Rated"; // 'Highest Rated', 'Most Downloaded', 'Newest', 'Most Liked'
     let selectedModel = null; // Currently clicked model for previewing details
     let selectedVersion = null; // Selected version of the clicked model
+    let previewRenderGeneration = 0;
+    let loraManifestSignature = "";
+
+    function getManifestSignature(manifestData) {
+        const items = Array.isArray(manifestData?.items) ? manifestData.items : [];
+        return items.map(item => `${item.filename}|${item.cache_key || ""}|${item.mtime || ""}|${item.size || ""}`).join("\n");
+    }
+
+    function applyManifest(manifestData) {
+        const items = Array.isArray(manifestData?.items) ? manifestData.items : [];
+        loraManifestItems = items;
+        loraManifestMap = new Map(items.map(item => [item.filename, item]));
+        localLoras = items.map(item => item.filename);
+        globalLoraManifest = manifestData;
+        globalLocalLoras = localLoras;
+        loraManifestSignature = getManifestSignature(manifestData);
+    }
+
+    function getManifestItem(filename) {
+        if (!filename) return null;
+        if (loraManifestMap.has(filename)) return loraManifestMap.get(filename);
+        return loraManifestItems.find(item => item.filename === filename || item.filename.endsWith(filename) || filename.endsWith(item.filename)) || null;
+    }
+
+    function getLocalPreviewUrl(filename, width = 320) {
+        const item = getManifestItem(filename);
+        if (item && width === LORA_MANIFEST_WIDTH && item.thumb_url) {
+            return item.thumb_url;
+        }
+        const version = item?.cache_key ? `&v=${encodeURIComponent(item.cache_key)}` : "";
+        return `/anima-tools/lora/local-preview?filename=${encodeURIComponent(filename)}&width=${width}${version}`;
+    }
+
+    function loadCachedManifestSync() {
+        if (globalLoraManifest) {
+            applyManifest(globalLoraManifest);
+            return true;
+        }
+        const cached = cacheGetSync(LORA_MANIFEST_CACHE_KEY);
+        if (cached && Array.isArray(cached.items)) {
+            applyManifest(cached);
+            return true;
+        }
+        return false;
+    }
+
+    async function loadCachedManifest() {
+        if (loadCachedManifestSync()) return true;
+        const cached = await cacheGet(LORA_MANIFEST_CACHE_KEY);
+        if (cached && Array.isArray(cached.items)) {
+            applyManifest(cached);
+            return true;
+        }
+        return false;
+    }
+
+    async function refreshManifest({ rerender = false } = {}) {
+        try {
+            const resp = await fetch(`/anima-tools/lora/manifest?width=${LORA_MANIFEST_WIDTH}`);
+            if (!resp.ok) return false;
+            const data = await resp.json();
+            const oldSignature = loraManifestSignature;
+            const newSignature = getManifestSignature(data);
+            const changed = oldSignature !== newSignature;
+            applyManifest(data);
+            cacheSet(LORA_MANIFEST_CACHE_KEY, data);
+            if (rerender && changed) {
+                if (currentCategory === "downloaded") {
+                    renderDownloadedOnly();
+                } else if (currentCategory === "favorites") {
+                    renderFavoritesOnly();
+                } else {
+                    renderGrid();
+                }
+            }
+            return changed;
+        } catch (e) {
+            console.error("[Anima Tools] Failed to refresh LoRA manifest", e);
+            return false;
+        }
+    }
 
     // Modal DOM setup
     const modalOverlay = document.createElement("div");
@@ -403,17 +614,19 @@ async function openLoraSelectorModal(node) {
             background: transparent;
             border: none;
             color: #9ca3af;
-            padding: 10px 14px;
+            padding: 8px 10px;
             border-radius: 8px;
             text-align: left;
-            font-size: 13px;
+            font-size: 12px;
+            line-height: 1.25;
             font-weight: 500;
             cursor: pointer;
             transition: all 0.2s;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             gap: 8px;
             width: 100%;
+            white-space: normal;
         }
         .anima-sidebar-btn:hover {
             background: rgba(255, 255, 255, 0.04);
@@ -432,14 +645,17 @@ async function openLoraSelectorModal(node) {
             display: flex;
             flex-direction: column;
             position: relative;
-            transition: all 0.2s;
+            transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
             height: 280px;
             cursor: pointer;
+            contain: layout paint style;
+            content-visibility: auto;
+            contain-intrinsic-size: 180px 280px;
         }
         .anima-lora-card:hover {
-            transform: translateY(-4px);
+            transform: translateY(-2px);
             border-color: rgba(11, 140, 233, 0.4);
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 6px 14px rgba(0, 0, 0, 0.26);
         }
         .anima-lora-card.selected {
             border-color: #0b8ce9;
@@ -563,6 +779,47 @@ async function openLoraSelectorModal(node) {
         }
         .anima-lora-tag:hover {
             background: rgba(11, 140, 233, 0.25);
+        }
+        .anima-lora-detail-preview-main {
+            width: 100%;
+            aspect-ratio: 2 / 3;
+            border-radius: 10px;
+            background: #000;
+            overflow: hidden;
+            position: relative;
+            flex-shrink: 0;
+        }
+        .anima-lora-preview-nav {
+            position: absolute;
+            top: 50%;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            background: rgba(0, 0, 0, 0.55);
+            color: #fff;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 700;
+            line-height: 1;
+            transform: translateY(-50%);
+            z-index: 7;
+            transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease, opacity 0.16s ease;
+            opacity: 0.82;
+        }
+        .anima-lora-preview-nav:hover {
+            background: rgba(11, 140, 233, 0.78);
+            border-color: rgba(125, 211, 252, 0.75);
+            opacity: 1;
+        }
+        .anima-lora-preview-nav.prev {
+            left: 10px;
+        }
+        .anima-lora-preview-nav.next {
+            right: 10px;
         }
         .anima-shimmer {
             position: absolute !important;
@@ -791,7 +1048,7 @@ async function openLoraSelectorModal(node) {
     // 1. Left Sidebar (width: 170px)
     const sidebar = document.createElement("div");
     sidebar.style.cssText = `
-        width: 170px;
+        width: 190px;
         background: #111112;
         border-right: 1px solid rgba(255, 255, 255, 0.05);
         display: flex;
@@ -799,17 +1056,54 @@ async function openLoraSelectorModal(node) {
         padding: 16px 8px;
         gap: 6px;
         flex-shrink: 0;
+        overflow-y: auto;
     `;
 
     const categories = [
-        { id: "all", label: t("All Artists").replace("画师", "LoRA").replace("Artists", "LoRAs"), tag: "" },
-        { id: "style", label: t("Hair Color").replace("角色发色", "画风").replace("Hair Color", "Style"), tag: "style" },
-        { id: "character", label: t("All Characters").replace("全部角色", "角色").replace("All Characters", "Character"), tag: "character" },
-        { id: "clothing", label: t("Hair Color").replace("角色发色", "服装").replace("Hair Color", "Clothing"), tag: "clothing" },
-        { id: "background", label: t("Hair Color").replace("角色发色", "背景").replace("Hair Color", "Background"), tag: "background" },
-        { id: "downloaded", label: t("Download Successful").replace("成功", "已下载").replace("Successful", "Downloaded") },
-        { id: "favorites", label: t("My Favorites") }
+        { id: "all", label: "全部 / All", category: "" },
+        { id: "action", label: "动作 / Action", category: "action" },
+        { id: "animal", label: "动物 / Animal", category: "animal" },
+        { id: "assets", label: "素材 / Assets", category: "assets" },
+        { id: "background", label: "背景 / Background", category: "background" },
+        { id: "base model", label: "基础模型 / Base Model", category: "base model" },
+        { id: "buildings", label: "建筑 / Buildings", category: "buildings" },
+        { id: "celebrity", label: "名人 / Celebrity", category: "celebrity" },
+        { id: "character", label: "角色 / Character", category: "character" },
+        { id: "clothing", label: "服装 / Clothing", category: "clothing" },
+        { id: "concept", label: "概念 / Concept", category: "concept" },
+        { id: "objects", label: "物品 / Objects", category: "objects" },
+        { id: "poses", label: "姿势 / Poses", category: "poses" },
+        { id: "style", label: "风格 / Style", category: "style" },
+        { id: "tool", label: "工具 / Tool", category: "tool" },
+        { id: "vehicle", label: "载具 / Vehicle", category: "vehicle" },
+        { id: "downloaded", label: "已下载 / Downloaded" },
+        { id: "favorites", label: "收藏 / Favorites" }
     ];
+
+    function buildSearchUrl(loadNext = false) {
+        const activeCat = categories.find(c => c.id === currentCategory);
+        const activeCategory = activeCat ? activeCat.category || "" : "";
+        let searchUrl = `/anima-tools/lora/search?query=${encodeURIComponent(query)}&category=${encodeURIComponent(activeCategory)}&sort=${encodeURIComponent(currentSort)}&limit=40`;
+        if (loadNext && cursor) {
+            searchUrl += `&cursor=${encodeURIComponent(cursor)}`;
+        }
+        return searchUrl;
+    }
+
+    function tryRenderCachedSearchPage() {
+        if (currentCategory === "downloaded" || currentCategory === "favorites") return false;
+        const searchUrl = buildSearchUrl(false);
+        const cached = civitaiSearchCache.get(searchUrl);
+        if (!cached || Date.now() - cached.timestamp >= CIVITAI_SEARCH_CACHE_TTL) return false;
+        pageHistory = [];
+        const pageState = {
+            searchUrl,
+            items: cached.data.items || [],
+            nextCursor: (cached.data.metadata && cached.data.metadata.nextCursor) ? cached.data.metadata.nextCursor : ""
+        };
+        applySearchPage(pageState, `Found ${pageState.items.length} Anima models (Cached).`);
+        return true;
+    }
 
     const sidebarButtons = {};
     categories.forEach(cat => {
@@ -869,6 +1163,14 @@ async function openLoraSelectorModal(node) {
     const pagButtons = document.createElement("div");
     pagButtons.style.cssText = "display: flex; gap: 8px;";
 
+    const prevBtn = document.createElement("button");
+    prevBtn.innerText = t("Previous");
+    prevBtn.className = "anima-btn-secondary";
+    prevBtn.disabled = true;
+    prevBtn.onclick = () => {
+        restorePreviousPage();
+    };
+
     const nextBtn = document.createElement("button");
     nextBtn.innerText = t("Next");
     nextBtn.className = "anima-btn-primary";
@@ -879,6 +1181,7 @@ async function openLoraSelectorModal(node) {
         }
     };
 
+    pagButtons.appendChild(prevBtn);
     pagButtons.appendChild(nextBtn);
     footer.appendChild(infoText);
     footer.appendChild(pagButtons);
@@ -914,11 +1217,96 @@ async function openLoraSelectorModal(node) {
     modalOverlay.appendChild(modalContainer);
     document.body.appendChild(modalOverlay);
 
+    const previewObserver = "IntersectionObserver" in window
+        ? new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (!entry.isIntersecting) return;
+                const target = entry.target;
+                previewObserver.unobserve(target);
+                target.__animaStartPreview?.();
+            });
+        }, { root: gridContainer, rootMargin: "700px 0px" })
+        : null;
+
+    function schedulePreviewLoad(element, startLoad, index, immediateCount = INITIAL_CARD_PREVIEW_LOADS) {
+        element.__animaStartPreview = startLoad;
+        if (index < immediateCount || !previewObserver) {
+            startLoad();
+        } else {
+            requestAnimationFrame(() => {
+                if (element.isConnected) {
+                    previewObserver.observe(element);
+                }
+            });
+        }
+    }
+
+    function resetPreviewObserver() {
+        previewObserver?.disconnect();
+    }
+
+    function clearGridForRender() {
+        previewRenderGeneration += 1;
+        resetPreviewObserver();
+        gridContainer.querySelectorAll("img, video").forEach(el => {
+            try {
+                el.removeAttribute("src");
+                if (typeof el.load === "function") el.load();
+            } catch (_) {}
+        });
+        gridContainer.innerHTML = "";
+        return previewRenderGeneration;
+    }
+
+    function updatePaginationButtons() {
+        prevBtn.disabled = isSearching || pageHistory.length === 0 || currentCategory === "downloaded" || currentCategory === "favorites";
+        nextBtn.disabled = isSearching || !cursor || currentCategory === "downloaded" || currentCategory === "favorites";
+    }
+
+    function applySearchPage(pageState, message = "") {
+        searchResults = Array.isArray(pageState.items) ? pageState.items : [];
+        cursor = pageState.nextCursor || "";
+        currentPageState = {
+            searchUrl: pageState.searchUrl || "",
+            items: searchResults,
+            nextCursor: cursor,
+            message
+        };
+        renderGrid();
+        updatePaginationButtons();
+        infoText.innerText = message || `Found ${searchResults.length} Anima models.`;
+    }
+
+    function restorePreviousPage() {
+        if (isSearching || pageHistory.length === 0) return;
+        const previous = pageHistory.pop();
+        selectedModel = null;
+        selectedVersion = null;
+        renderDetailEmptyState();
+        applySearchPage(previous, previous.message || `Found ${previous.items?.length || 0} Anima models (Cached).`);
+    }
+
     // Render skeleton placeholders initially before async data loads
-    gridContainer.innerHTML = getSkeletonHtml(40);
+    const hasSyncManifest = loadCachedManifestSync();
+    const renderedCachedSearch = tryRenderCachedSearchPage();
+    if (renderedCachedSearch) {
+        // Search cache has already painted the first page.
+    } else if (hasSyncManifest && currentCategory === "downloaded") {
+        renderDownloadedOnly();
+        infoText.innerText = `Showing ${localLoras.length} cached local LoRAs.`;
+    } else {
+        gridContainer.innerHTML = getSkeletonHtml(40);
+        loadCachedManifest().then((hasCached) => {
+            if (hasCached && currentCategory === "downloaded") {
+                renderDownloadedOnly();
+                infoText.innerText = `Showing ${localLoras.length} cached local LoRAs.`;
+            }
+        });
+    }
 
     // Start background asynchronous data fetch
     setTimeout(async () => {
+        const manifestRefreshPromise = refreshManifest();
         try {
             const promises = [];
             if (!globalLoraConfig) {
@@ -926,9 +1314,9 @@ async function openLoraSelectorModal(node) {
                     if (data) globalLoraConfig = data;
                 }));
             }
-            if (!globalLocalLoras) {
+            if (!globalLoraManifest && !globalLocalLoras) {
                 promises.push(fetch("/anima-tools/lora/local").then(r => r.ok ? r.json() : null).then(data => {
-                    if (data) globalLocalLoras = data;
+                    if (Array.isArray(data)) globalLocalLoras = data;
                 }));
             }
             if (!globalFavorites) {
@@ -945,7 +1333,8 @@ async function openLoraSelectorModal(node) {
             }
 
             if (globalLoraConfig) config = globalLoraConfig;
-            if (globalLocalLoras) localLoras = globalLocalLoras;
+            if (globalLoraManifest) applyManifest(globalLoraManifest);
+            else if (globalLocalLoras) localLoras = globalLocalLoras;
             if (globalFavorites && globalFavorites.lora) {
                 favoritesConfig.lora = globalFavorites.lora;
             }
@@ -955,6 +1344,14 @@ async function openLoraSelectorModal(node) {
 
         // Once initial data is ready, run first search query
         executeSearch();
+        manifestRefreshPromise.then((changed) => {
+            if (!changed) return;
+            if (currentCategory === "downloaded") {
+                renderDownloadedOnly();
+            } else if (!isSearching && searchResults.length > 0) {
+                renderGrid();
+            }
+        });
 
         // Start polling download status
         pollInterval = setInterval(updateDownloadsProgress, 1000);
@@ -963,17 +1360,16 @@ async function openLoraSelectorModal(node) {
     // Close Handler
     function closeModal() {
         if (pollInterval) clearInterval(pollInterval);
+        resetPreviewObserver();
         document.head.removeChild(styleSheet);
         modalOverlay.remove();
     }
 
     // --- Search Execution ---
     async function executeSearch(loadNext = false, forceRefresh = false) {
-        if (isSearching) return;
         isSearching = true;
-        
-        gridContainer.innerHTML = getSkeletonHtml(40);
-        infoText.innerText = "Querying...";
+        const requestSeq = ++searchRequestSeq;
+        updatePaginationButtons();
         
         // Clear selected state
         selectedModel = null;
@@ -982,76 +1378,93 @@ async function openLoraSelectorModal(node) {
 
         if (currentCategory === "downloaded") {
             isSearching = false;
-            nextBtn.disabled = true;
+            pageHistory = [];
+            currentPageState = null;
+            updatePaginationButtons();
             renderDownloadedOnly();
             return;
         }
 
         if (currentCategory === "favorites") {
             isSearching = false;
-            nextBtn.disabled = true;
+            pageHistory = [];
+            currentPageState = null;
+            updatePaginationButtons();
             renderFavoritesOnly();
             return;
         }
 
-        // Get matching tag for Civitai
-        const activeCat = categories.find(c => c.id === currentCategory);
-        const activeTag = activeCat ? activeCat.tag : "";
+        const searchUrl = buildSearchUrl(loadNext);
 
-        let searchUrl = `/anima-tools/lora/search?query=${encodeURIComponent(query)}&tag=${encodeURIComponent(activeTag)}&sort=${encodeURIComponent(currentSort)}&limit=40`;
-        if (loadNext && cursor) {
-            searchUrl += `&cursor=${encodeURIComponent(cursor)}`;
+        if (!loadNext) {
+            pageHistory = [];
+            currentPageState = null;
         }
 
-        // Check Civitai Search cache (24 hours TTL for long-term cache)
-        const CACHE_TTL = 24 * 60 * 60 * 1000;
         if (forceRefresh) {
             civitaiSearchCache.delete(searchUrl);
         }
         const cached = civitaiSearchCache.get(searchUrl);
-        if (!forceRefresh && cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
-            searchResults = cached.data.items || [];
-            cursor = (cached.data.metadata && cached.data.metadata.nextCursor) ? cached.data.metadata.nextCursor : "";
-            renderGrid();
-            nextBtn.disabled = !cursor;
-            infoText.innerText = `Found ${searchResults.length} Anima models (Cached).`;
+        if (!forceRefresh && cached && (Date.now() - cached.timestamp < CIVITAI_SEARCH_CACHE_TTL)) {
+            if (requestSeq !== searchRequestSeq) return;
+            const previousState = loadNext && currentPageState ? { ...currentPageState, items: [...currentPageState.items] } : null;
+            const pageState = {
+                searchUrl,
+                items: cached.data.items || [],
+                nextCursor: (cached.data.metadata && cached.data.metadata.nextCursor) ? cached.data.metadata.nextCursor : ""
+            };
+            if (previousState) pageHistory.push(previousState);
+            applySearchPage(pageState, `Found ${pageState.items.length} Anima models (Cached).`);
             isSearching = false;
+            updatePaginationButtons();
             return;
         }
 
+        clearGridForRender();
+        gridContainer.innerHTML = getSkeletonHtml(40);
+        infoText.innerText = "Querying...";
+
         try {
             const resp = await fetch(searchUrl);
+            if (requestSeq !== searchRequestSeq) return;
             if (resp.ok) {
                 const data = await resp.json();
+                if (requestSeq !== searchRequestSeq) return;
                 civitaiSearchCache.set(searchUrl, { data: data, timestamp: Date.now() });
-                searchResults = data.items || [];
-                cursor = (data.metadata && data.metadata.nextCursor) ? data.metadata.nextCursor : "";
-                
-                renderGrid();
-                
-                nextBtn.disabled = !cursor;
-                infoText.innerText = `Found ${searchResults.length} Anima models on this page.`;
+                const previousState = loadNext && currentPageState ? { ...currentPageState, items: [...currentPageState.items] } : null;
+                const pageState = {
+                    searchUrl,
+                    items: data.items || [],
+                    nextCursor: (data.metadata && data.metadata.nextCursor) ? data.metadata.nextCursor : ""
+                };
+                if (previousState) pageHistory.push(previousState);
+                applySearchPage(pageState, `Found ${pageState.items.length} Anima models on this page.`);
             } else {
                 gridContainer.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #ef4444; padding: 40px;">Failed to load data from server.</div>`;
             }
         } catch (e) {
+            if (requestSeq !== searchRequestSeq) return;
             console.error(e);
             gridContainer.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #ef4444; padding: 40px;">Network error occurred.</div>`;
         } finally {
-            isSearching = false;
+            if (requestSeq === searchRequestSeq) {
+                isSearching = false;
+                updatePaginationButtons();
+            }
         }
     }
 
     // --- Grid Rendering ---
     function renderGrid() {
-        gridContainer.innerHTML = "";
+        const renderGeneration = clearGridForRender();
         
         if (searchResults.length === 0) {
             gridContainer.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #9ca3af; padding: 40px;">${t("No Anima LoRAs found")}</div>`;
             return;
         }
 
-        for (const model of searchResults) {
+        const fragment = document.createDocumentFragment();
+        for (const [index, model] of searchResults.entries()) {
             const card = document.createElement("div");
             card.className = "anima-lora-card";
             if (selectedModel && String(selectedModel.id) === String(model.id)) {
@@ -1073,7 +1486,11 @@ async function openLoraSelectorModal(node) {
             const localPath = localLoras.find(l => l === filename || l.endsWith(filename));
             const isLocal = !!localPath;
             if (isLocal) {
-                previewUrl = `/anima-tools/lora/local-preview?filename=${encodeURIComponent(localPath)}`;
+                previewUrl = getLocalPreviewUrl(localPath, LORA_LOCAL_CARD_PREVIEW_WIDTH);
+                const localManifest = getManifestItem(localPath);
+                if (localManifest && !localManifest.has_preview && localManifest.meta_summary?.preview_url) {
+                    previewUrl = getOptimizedImageUrl(localManifest.meta_summary.preview_url, LORA_CARD_PREVIEW_WIDTH);
+                }
             } else {
                 const images = firstVersion.images || [];
                 if (images.length > 0) {
@@ -1082,10 +1499,7 @@ async function openLoraSelectorModal(node) {
                         isVideo = true;
                     }
                     if (!isVideo && previewUrl) {
-                        previewUrl = getOptimizedImageUrl(previewUrl, 320);
-                    }
-                    if (previewUrl && config.civitai_api_key) {
-                        previewUrl += (previewUrl.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(config.civitai_api_key);
+                        previewUrl = getPreviewImageUrl(images[0], LORA_CARD_PREVIEW_WIDTH);
                     }
                 }
             }
@@ -1100,19 +1514,13 @@ async function openLoraSelectorModal(node) {
                 mediaElement.autoplay = true;
                 mediaElement.controls = false;
             } else {
-                mediaElement.loading = "lazy";
+                mediaElement.loading = index < INITIAL_CARD_PREVIEW_LOADS ? "eager" : "lazy";
+                mediaElement.fetchPriority = index < INITIAL_CARD_PREVIEW_LOADS ? "high" : "low";
             }
             
             let loader = null;
             if (previewUrl) {
-                mediaElement.src = previewUrl;
                 if (isVideo) {
-                    loader = document.createElement("div");
-                    const spinner = document.createElement("div");
-                    spinner.className = "anima-spinner";
-                    loader.appendChild(spinner);
-                    imgContainer.appendChild(loader);
-                    
                     mediaElement.onloadeddata = () => {
                         mediaElement.style.opacity = "1";
                         loader?.remove();
@@ -1125,20 +1533,31 @@ async function openLoraSelectorModal(node) {
                         fallback.style.cssText = "width: 100%; height: 100%; object-fit: cover;";
                         imgContainer.appendChild(fallback);
                     };
+                    schedulePreviewLoad(mediaElement, () => {
+                        if (renderGeneration !== previewRenderGeneration) return;
+                        if (mediaElement.dataset.loadStarted === "1") return;
+                        mediaElement.dataset.loadStarted = "1";
+                        loader = createPreviewLoader(imgContainer);
+                        mediaElement.src = previewUrl;
+                    }, index);
+                } else if (isImageLoaded(previewUrl)) {
+                    // 缓存命中：浏览器 HTTP 缓存会瞬间返回，跳过 spinner 直接显示
+                    mediaElement.src = previewUrl;
+                    mediaElement.style.opacity = "1";
                 } else {
-                    if (mediaElement.complete && mediaElement.naturalWidth !== 0) {
-                        mediaElement.style.opacity = "1";
-                    } else {
-                        loader = document.createElement("div");
-                        const spinner = document.createElement("div");
-                        spinner.className = "anima-spinner";
-                        loader.appendChild(spinner);
-                        imgContainer.appendChild(loader);
-                    }
-                    
+                    const isRemoteProxy = previewUrl.includes("/anima-tools/lora/remote-preview");
                     mediaElement.onload = () => {
                         mediaElement.style.opacity = "1";
                         loader?.remove();
+                        const retryCount = parseInt(mediaElement.dataset.remoteRetryCount || "0", 10);
+                        if (isRemoteProxy && retryCount < 2) {
+                            mediaElement.dataset.remoteRetryCount = String(retryCount + 1);
+                            setTimeout(() => {
+                                mediaElement.src = `${previewUrl}${previewUrl.includes("?") ? "&" : "?"}retry=${Date.now()}`;
+                            }, retryCount === 0 ? 1200 : 2600);
+                        } else {
+                            markImageLoaded(previewUrl);
+                        }
                     };
                     mediaElement.onerror = () => {
                         mediaElement.style.display = "none";
@@ -1148,6 +1567,13 @@ async function openLoraSelectorModal(node) {
                         fallback.style.cssText = "width: 100%; height: 100%; object-fit: cover;";
                         imgContainer.appendChild(fallback);
                     };
+                    schedulePreviewLoad(mediaElement, () => {
+                        if (renderGeneration !== previewRenderGeneration) return;
+                        if (mediaElement.dataset.loadStarted === "1") return;
+                        mediaElement.dataset.loadStarted = "1";
+                        loader = createPreviewLoader(imgContainer);
+                        mediaElement.src = previewUrl;
+                    }, index);
                 }
             } else {
                 mediaElement.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23222'/><text x='50%' y='50%' font-size='10' fill='%23666' dominant-baseline='middle' text-anchor='middle'>No Preview</text></svg>";
@@ -1243,8 +1669,9 @@ async function openLoraSelectorModal(node) {
                 renderModelDetail();
             };
 
-            gridContainer.appendChild(card);
+            fragment.appendChild(card);
         }
+        gridContainer.appendChild(fragment);
     }
 
     // --- Render Model Detail Panel (Right Sidebar) ---
@@ -1256,12 +1683,9 @@ async function openLoraSelectorModal(node) {
 
         detailPanel.innerHTML = "";
 
-        // 1. Big Preview Image
+        // 1. Preview gallery
         const imgContainer = document.createElement("div");
-        imgContainer.style.cssText = "width: 100%; height: 180px; border-radius: 10px; background: #000; overflow: hidden; position: relative; flex-shrink: 0;";
-        
-        let previewUrl = "";
-        let isVideo = false;
+        imgContainer.className = "anima-lora-detail-preview-main";
         
         const files = selectedVersion.files || [];
         const safetensorFile = files.find(f => f.name.endsWith(".safetensors")) || files[0] || {};
@@ -1272,118 +1696,165 @@ async function openLoraSelectorModal(node) {
         const modelId = selectedModel.id;
         const isCivitaiModel = modelId && !isNaN(Number(modelId)) && !String(modelId).endsWith(".safetensors");
 
-        if (isLocal) {
-            previewUrl = `/anima-tools/lora/local-preview?filename=${encodeURIComponent(localPath)}`;
-        } else {
-            const images = selectedVersion.images || [];
-            if (images.length > 0) {
-                previewUrl = images[0].url || "";
-                if (images[0].type === "video" || (previewUrl && (previewUrl.toLowerCase().includes(".mp4") || previewUrl.toLowerCase().includes(".webm") || previewUrl.toLowerCase().includes(".ogv")))) {
-                    isVideo = true;
+        const noPreviewSvg = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='150' viewBox='0 0 100 150'><rect width='100' height='150' fill='%23222'/><text x='50%' y='50%' font-size='10' fill='%23666' dominant-baseline='middle' text-anchor='middle'>No Preview</text></svg>";
+
+        const isVideoPreview = (image, url) => {
+            const lowerUrl = String(url || "").toLowerCase();
+            return image?.type === "video" || lowerUrl.includes(".mp4") || lowerUrl.includes(".webm") || lowerUrl.includes(".ogv");
+        };
+
+        const createFallbackPreview = () => {
+            const fallback = document.createElement("img");
+            fallback.src = noPreviewSvg;
+            fallback.style.cssText = "width: 100%; height: 100%; object-fit: contain; background: #000;";
+            return fallback;
+        };
+
+        const getPreviewItems = () => {
+            if (isLocal) {
+                let localPreviewUrl = getLocalPreviewUrl(localPath, LORA_DETAIL_PREVIEW_WIDTH);
+                const localManifest = getManifestItem(localPath);
+                if (localManifest && !localManifest.has_preview && localManifest.meta_summary?.preview_url) {
+                    localPreviewUrl = getOptimizedImageUrl(localManifest.meta_summary.preview_url, LORA_DETAIL_PREVIEW_WIDTH);
                 }
-                if (!isVideo && previewUrl) {
-                    previewUrl = getOptimizedImageUrl(previewUrl, 768);
-                }
-                if (previewUrl && config.civitai_api_key) {
-                    previewUrl += (previewUrl.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(config.civitai_api_key);
-                }
+                return localPreviewUrl ? [{
+                    url: localPreviewUrl,
+                    thumbUrl: localPreviewUrl,
+                    isVideo: false
+                }] : [];
             }
-        }
-        
-        const mediaElement = isVideo ? document.createElement("video") : document.createElement("img");
-        mediaElement.style.cssText = "width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; opacity: 0; transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);";
-        
-        if (isVideo) {
-            mediaElement.muted = true;
-            mediaElement.loop = true;
-            mediaElement.playsInline = true;
-            mediaElement.autoplay = true;
-            mediaElement.controls = false;
-        }
-        
-        if (previewUrl) {
-            mediaElement.onclick = () => window.open(previewUrl, "_blank");
-        }
-        
-        let loader = null;
-        if (previewUrl) {
-            mediaElement.src = previewUrl;
-            if (isVideo) {
+
+            const images = selectedVersion.images || [];
+            const orderedImages = [
+                ...images.filter(img => !isVideoPreview(img, img?.url || img?.thumbnailUrl || "")),
+                ...images.filter(img => isVideoPreview(img, img?.url || img?.thumbnailUrl || ""))
+            ];
+
+            return orderedImages
+                .map(image => {
+                    const rawUrl = image?.url || image?.thumbnailUrl || "";
+                    if (!rawUrl) return null;
+                    const isVideo = isVideoPreview(image, rawUrl);
+                    return {
+                        url: isVideo ? rawUrl : getPreviewImageUrl(image, LORA_DETAIL_PREVIEW_WIDTH),
+                        thumbUrl: isVideo ? rawUrl : getPreviewImageUrl(image, 160),
+                        isVideo
+                    };
+                })
+                .filter(Boolean);
+        };
+
+        const previewItems = getPreviewItems();
+        let currentPreviewIndex = 0;
+
+        function renderMainPreview(index) {
+            if (previewItems.length > 0) {
+                currentPreviewIndex = (index + previewItems.length) % previewItems.length;
+            } else {
+                currentPreviewIndex = 0;
+            }
+            imgContainer.innerHTML = "";
+
+            const item = previewItems[currentPreviewIndex] || { url: noPreviewSvg, isVideo: false };
+            const mediaElement = item.isVideo ? document.createElement("video") : document.createElement("img");
+            mediaElement.style.cssText = "width: 100%; height: 100%; object-fit: contain; background: #000; cursor: zoom-in; opacity: 0; transition: opacity 0.22s cubic-bezier(0.4, 0, 0.2, 1);";
+
+            if (item.isVideo) {
+                mediaElement.muted = true;
+                mediaElement.loop = true;
+                mediaElement.playsInline = true;
+                mediaElement.autoplay = true;
+                mediaElement.controls = false;
+            }
+
+            if (item.url && item.url !== noPreviewSvg) {
+                mediaElement.onclick = () => window.open(item.url, "_blank");
+            }
+
+            let loader = null;
+            const showLoader = () => {
                 loader = document.createElement("div");
                 const spinner = document.createElement("div");
                 spinner.className = "anima-spinner";
                 loader.appendChild(spinner);
                 imgContainer.appendChild(loader);
-                
+                clearStaleLoader(loader);
+            };
+
+            if (!item.url || item.url === noPreviewSvg) {
+                mediaElement.src = noPreviewSvg;
+                mediaElement.style.opacity = "1";
+            } else if (item.isVideo) {
+                showLoader();
                 mediaElement.onloadeddata = () => {
                     mediaElement.style.opacity = "1";
                     loader?.remove();
                 };
                 mediaElement.onerror = () => {
-                    mediaElement.style.display = "none";
+                    mediaElement.remove();
                     loader?.remove();
-                    const fallback = document.createElement("img");
-                    fallback.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23222'/><text x='50%' y='50%' font-size='10' fill='%23666' dominant-baseline='middle' text-anchor='middle'>No Preview</text></svg>";
-                    fallback.style.cssText = "width: 100%; height: 100%; object-fit: cover;";
-                    imgContainer.appendChild(fallback);
+                    imgContainer.appendChild(createFallbackPreview());
                 };
+                mediaElement.src = item.url;
             } else {
-                if (mediaElement.complete && mediaElement.naturalWidth !== 0) {
+                if (isImageLoaded(item.url)) {
                     mediaElement.style.opacity = "1";
                 } else {
-                    loader = document.createElement("div");
-                    const spinner = document.createElement("div");
-                    spinner.className = "anima-spinner";
-                    loader.appendChild(spinner);
-                    imgContainer.appendChild(loader);
+                    showLoader();
                 }
-                
                 mediaElement.onload = () => {
                     mediaElement.style.opacity = "1";
                     loader?.remove();
+                    markImageLoaded(item.url);
                 };
                 mediaElement.onerror = () => {
+                    mediaElement.remove();
+                    loader?.remove();
                     if (!isCivitaiModel) {
-                        mediaElement.remove();
-                        
                         const video = document.createElement("video");
-                        video.style.cssText = "width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; opacity: 0; transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);";
+                        video.style.cssText = "width: 100%; height: 100%; object-fit: contain; background: #000; cursor: zoom-in; opacity: 0; transition: opacity 0.22s cubic-bezier(0.4, 0, 0.2, 1);";
                         video.muted = true;
                         video.loop = true;
                         video.playsInline = true;
                         video.autoplay = true;
                         video.controls = false;
-                        video.src = previewUrl;
-                        video.onclick = () => window.open(previewUrl, "_blank");
-                        
+                        video.onclick = () => window.open(item.url, "_blank");
                         video.onloadeddata = () => {
                             video.style.opacity = "1";
-                            loader?.remove();
                         };
                         video.onerror = () => {
                             video.remove();
-                            loader?.remove();
-                            const fallback = document.createElement("img");
-                            fallback.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23222'/><text x='50%' y='50%' font-size='10' fill='%23666' dominant-baseline='middle' text-anchor='middle'>No Preview</text></svg>";
-                            fallback.style.cssText = "width: 100%; height: 100%; object-fit: cover;";
-                            imgContainer.appendChild(fallback);
+                            imgContainer.appendChild(createFallbackPreview());
                         };
+                        video.src = item.url;
                         imgContainer.appendChild(video);
                     } else {
-                        mediaElement.style.display = "none";
-                        loader?.remove();
-                        const fallback = document.createElement("img");
-                        fallback.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23222'/><text x='50%' y='50%' font-size='10' fill='%23666' dominant-baseline='middle' text-anchor='middle'>No Preview</text></svg>";
-                        fallback.style.cssText = "width: 100%; height: 100%; object-fit: cover;";
-                        imgContainer.appendChild(fallback);
+                        imgContainer.appendChild(createFallbackPreview());
                     }
                 };
+                mediaElement.src = item.url;
             }
-        } else {
-            mediaElement.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23222'/><text x='50%' y='50%' font-size='10' fill='%23666' dominant-baseline='middle' text-anchor='middle'>No Preview</text></svg>";
-            mediaElement.style.opacity = "1";
+            imgContainer.appendChild(mediaElement);
+
+            if (previewItems.length > 1) {
+                const makeNavButton = (direction) => {
+                    const btn = document.createElement("button");
+                    btn.type = "button";
+                    btn.className = `anima-lora-preview-nav ${direction < 0 ? "prev" : "next"}`;
+                    btn.innerText = direction < 0 ? "<" : ">";
+                    btn.title = direction < 0 ? "Previous preview" : "Next preview";
+                    btn.onclick = (event) => {
+                        event.stopPropagation();
+                        renderMainPreview(currentPreviewIndex + direction);
+                    };
+                    return btn;
+                };
+                imgContainer.appendChild(makeNavButton(-1));
+                imgContainer.appendChild(makeNavButton(1));
+            }
         }
-        imgContainer.appendChild(mediaElement);
+
+        renderMainPreview(0);
 
         // 2. Info Row
         const titleRow = document.createElement("div");
@@ -1593,7 +2064,7 @@ async function openLoraSelectorModal(node) {
 
     // --- Render Downloaded Only (Local List) ---
     function renderDownloadedOnly() {
-        gridContainer.innerHTML = "";
+        const renderGeneration = clearGridForRender();
         
         const filteredLocal = localLoras.filter(name => {
             const q = query.toLowerCase();
@@ -1606,7 +2077,9 @@ async function openLoraSelectorModal(node) {
             return;
         }
 
-        for (const filename of filteredLocal) {
+        const fragment = document.createDocumentFragment();
+        for (const [index, filename] of filteredLocal.entries()) {
+            const manifestItem = getManifestItem(filename);
             const card = document.createElement("div");
             card.className = "anima-lora-card";
             if (selectedModel && selectedModel.id === filename) {
@@ -1618,26 +2091,25 @@ async function openLoraSelectorModal(node) {
             
             const img = document.createElement("img");
             img.style.cssText = "width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);";
-            img.loading = "lazy";
+            img.loading = index < INITIAL_CARD_PREVIEW_LOADS ? "eager" : "lazy";
+            img.fetchPriority = index < INITIAL_CARD_PREVIEW_LOADS ? "high" : "low";
             
             let loader = null;
-            const previewUrl = `/anima-tools/lora/local-preview?filename=${encodeURIComponent(filename)}`;
-            img.src = previewUrl;
+            let previewUrl = getLocalPreviewUrl(filename, LORA_LOCAL_CARD_PREVIEW_WIDTH);
+            if (manifestItem && !manifestItem.has_preview && manifestItem.meta_summary?.preview_url) {
+                previewUrl = getOptimizedImageUrl(manifestItem.meta_summary.preview_url, LORA_CARD_PREVIEW_WIDTH);
+            }
             
-            loader = document.createElement("div");
-            const spinner = document.createElement("div");
-            spinner.className = "anima-spinner";
-            loader.appendChild(spinner);
-            imgContainer.appendChild(loader);
-            
-            if (img.complete && img.naturalWidth !== 0) {
+            const previewAlreadyLoaded = isImageLoaded(previewUrl);
+            if (previewAlreadyLoaded) {
+                img.src = previewUrl;
                 img.style.opacity = "1";
-                loader?.remove();
             }
             
             img.onload = () => {
                 img.style.opacity = "1";
                 loader?.remove();
+                markImageLoaded(previewUrl);
             };
             img.onerror = () => {
                 img.remove();
@@ -1680,6 +2152,15 @@ async function openLoraSelectorModal(node) {
                 img.style.transform = "scale(1)";
             };
             imgContainer.appendChild(img);
+            if (!previewAlreadyLoaded) {
+                schedulePreviewLoad(img, () => {
+                    if (renderGeneration !== previewRenderGeneration) return;
+                    if (img.dataset.loadStarted === "1") return;
+                    img.dataset.loadStarted = "1";
+                    loader = createPreviewLoader(imgContainer);
+                    img.src = previewUrl;
+                }, index);
+            }
 
             // Card delete button
             const deleteBtn = document.createElement("button");
@@ -1737,6 +2218,12 @@ async function openLoraSelectorModal(node) {
                     if (resp.ok) {
                         localLoras = localLoras.filter(l => l !== filename);
                         globalLocalLoras = localLoras;
+                        loraManifestItems = loraManifestItems.filter(item => item.filename !== filename);
+                        loraManifestMap.delete(filename);
+                        if (globalLoraManifest?.items) {
+                            globalLoraManifest.items = globalLoraManifest.items.filter(item => item.filename !== filename);
+                            cacheSet(LORA_MANIFEST_CACHE_KEY, globalLoraManifest);
+                        }
                         
                         let isCurrentSelectedDeleted = false;
                         if (selectedModel) {
@@ -1821,38 +2308,15 @@ async function openLoraSelectorModal(node) {
             localPathLabel.innerText = "Local SafeTensor";
             localPathLabel.style.cssText = "font-size: 10px; color: #10b981; text-shadow: 0 1px 3px rgba(0,0,0,0.85);";
 
-            // 异步请求本地 LoRA 元数据（后端会自动进行哈希反查与自动补齐伴随数据）
-            fetch(`/anima-tools/lora/local-metadata?filename=${encodeURIComponent(filename)}`)
-                .then(r => r.ok ? r.json() : null)
-                .then(res => {
-                    if (res && res.success && res.metadata) {
-                        const meta = res.metadata;
-                        const mName = meta.model?.name;
-                        const mCreator = meta.model?.creator?.username;
-                        if (mName) {
-                            modelName.innerText = mName;
-                            modelName.title = mName;
-                        }
-                        if (mCreator) {
-                            localPathLabel.innerText = `by ${mCreator}`;
-                            localPathLabel.style.color = "#cbd5e1";
-                        }
-                        
-                        // 自动同步 C 站封面，如果本地预览还在下载或者不可用
-                        const images = meta.version?.images || [];
-                        if (images.length > 0 && (!img.src || img.src.includes("local-preview") && img.style.opacity === "0")) {
-                            let webUrl = images[0].url;
-                            if (webUrl) {
-                                webUrl = getOptimizedImageUrl(webUrl, 320);
-                                if (config.civitai_api_key) {
-                                    webUrl += (webUrl.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(config.civitai_api_key);
-                                }
-                                img.src = webUrl;
-                            }
-                        }
-                    }
-                })
-                .catch(err => console.error("[Anima Tools] Error lazy-loading card metadata:", err));
+            const metaSummary = manifestItem?.meta_summary || {};
+            if (metaSummary.name) {
+                modelName.innerText = metaSummary.name;
+                modelName.title = metaSummary.name;
+            }
+            if (metaSummary.creator) {
+                localPathLabel.innerText = `by ${metaSummary.creator}`;
+                localPathLabel.style.color = "#cbd5e1";
+            }
 
             body.appendChild(modelName);
             body.appendChild(localPathLabel);
@@ -1866,11 +2330,16 @@ async function openLoraSelectorModal(node) {
                 card.classList.add("selected");
 
                 // Pre-fill with a mock model version in case fetch fails or meta is absent
-                selectedModel = { id: filename, name: filename, description: "This is a locally available LoRA model file." };
+                selectedModel = {
+                    id: filename,
+                    name: manifestItem?.meta_summary?.name || displayName,
+                    creator: manifestItem?.meta_summary?.creator ? { username: manifestItem.meta_summary.creator } : undefined,
+                    description: "This is a locally available LoRA model file."
+                };
                 selectedVersion = {
                     id: filename,
-                    name: "Local version",
-                    trainedWords: [],
+                    name: manifestItem?.meta_summary?.version || "Local version",
+                    trainedWords: manifestItem?.meta_summary?.trained_words || [],
                     files: [{ name: filename }],
                     downloadUrl: ""
                 };
@@ -1893,9 +2362,10 @@ async function openLoraSelectorModal(node) {
                 }
             };
 
-            gridContainer.appendChild(card);
+            fragment.appendChild(card);
         }
 
+        gridContainer.appendChild(fragment);
         infoText.innerText = `Found ${filteredLocal.length} local LoRAs.`;
     }
 
@@ -1973,6 +2443,7 @@ async function openLoraSelectorModal(node) {
             activeDownloads = jobs;
 
             let needGridRebuild = false;
+            let needsManifestRefresh = false;
 
             for (const [task_id, job] of Object.entries(jobs)) {
                 const bar = document.getElementById(`dl-bar-${task_id}`);
@@ -1989,6 +2460,7 @@ async function openLoraSelectorModal(node) {
                         globalLocalLoras = localLoras;
                         needGridRebuild = true;
                     }
+                    needsManifestRefresh = true;
                     delete activeDownloads[task_id];
                 } else if (job.status === "failed") {
                     console.error(`Download failed for task ${task_id}: ${job.error}`);
@@ -2002,12 +2474,12 @@ async function openLoraSelectorModal(node) {
                 }
             }
 
-            // If we are currently viewing the downloading model details, refresh details view
-            if (selectedVersion && activeDownloads[selectedVersion.id]) {
-                needGridRebuild = true;
+            if (needsManifestRefresh) {
+                await refreshManifest();
             }
 
-            if (needGridRebuild || Object.keys(jobs).length > 0) {
+            // 只在下载完成/失败等状态变更时才重建 grid，正在下载中只更新进度条
+            if (needGridRebuild) {
                 if (currentCategory === "downloaded") {
                     renderDownloadedOnly();
                 } else if (currentCategory === "favorites") {
@@ -2019,6 +2491,14 @@ async function openLoraSelectorModal(node) {
                 // Refresh detail pane if selection is active
                 if (selectedModel) {
                     renderModelDetail();
+                }
+            } else if (selectedVersion && activeDownloads[selectedVersion.id]) {
+                // 仅更新详情面板的按钮状态文字
+                const actionBtn = detailPanel.querySelector(".anima-btn-primary");
+                if (actionBtn) {
+                    const job = activeDownloads[selectedVersion.id];
+                    const percent = job.total ? Math.round((job.progress / job.total) * 100) : 0;
+                    actionBtn.innerText = t("Downloading... {progress}%", { progress: percent });
                 }
             }
         } catch (e) {
@@ -2191,11 +2671,7 @@ async function openLoraSelectorModal(node) {
                     globalLoraConfig = config;
                     alert(t("Path saved successfully"));
                     
-                    const localResp = await fetch("/anima-tools/lora/local");
-                    if (localResp.ok) {
-                        localLoras = await localResp.json();
-                        globalLocalLoras = localLoras;
-                    }
+                    await refreshManifest();
                     if (currentCategory === "downloaded") {
                         renderDownloadedOnly();
                     } else if (currentCategory === "favorites") {

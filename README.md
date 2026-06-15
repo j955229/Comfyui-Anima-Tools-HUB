@@ -1,7 +1,7 @@
 # Anima-Tools: ComfyUI Premium Artist & Character Visual Selector 🎨
 
 <p align="center">
-  <img src="https://img.shields.io/github/v/release/your-username/Anima-Tools?color=ff69b4&style=flat-square" alt="Release">
+  <img src="https://img.shields.io/github/v/release/nregret/Comfyui-Anima-Tools?color=ff69b4&style=flat-square" alt="Release">
   <img src="https://img.shields.io/badge/ComfyUI-Custom__Nodes-blueviolet?style=flat-square" alt="ComfyUI Custom Nodes">
   <img src="https://img.shields.io/badge/Database-40K+_Artists-orange?style=flat-square" alt="Artist Database">
   <img src="https://img.shields.io/badge/i18n-ZH__CN%20%7C%20EN-green?style=flat-square" alt="i18n Supported">
@@ -86,7 +86,7 @@
    ```
 3. 执行 Git 克隆指令：
    ```bash
-   git clone https://github.com/your-username/Anima-Tools.git
+   git clone https://github.com/nregret/Comfyui-Anima-Tools.git
    ```
 4. 重新启动 ComfyUI 即可自动加载。
 
@@ -97,7 +97,7 @@
 
 ## 📖 节点参数说明 (Nodes Reference)
 
-本套件共提供 4 个核心节点，放置于 `AnimaArt` 分类目录下：
+本套件共提供 5 个核心节点，放置于 `AnimaArt` 分类目录下：
 
 ### 1. 🎨 Anima Artist Tag Selector & Selector+ (画师选择器)
 *   **基础版 (Selector):**
@@ -119,6 +119,11 @@
     *   `extra_text` (String): 追加的自定义提示词。
     *   `separator` (String): 智能防错连接符。
 
+### 3. 🧩 Anima Multi LoRA Loader (多 LoRA 加载器)
+*   `model` / `clip`: ComfyUI 标准模型与 CLIP 输入。
+*   `lora_list_json` (String): 前端 LoRA 选择器维护的 LoRA 列表，包含文件名、启用状态、模型强度与 CLIP 强度。
+*   前端面板支持本地 LoRA 预览、Civitai 搜索、下载进度、收藏、持久缩略图缓存与快速二次打开。
+
 ---
 
 ## 📦 项目架构 (Project Structure)
@@ -127,10 +132,13 @@
 Anima-Tools/
 ├── __init__.py                # 插件注册入口与前端静态 Web 资源声明
 ├── nodes.py                   # Python 核心后端（包含画师与角色的 Tag 净化、智能拼接等）
+├── anima_lora_api.py          # Civitai LoRA 搜索、下载与配置持久化
 ├── README.md                  # 说明文件
 ├── js/
 │   ├── anima_artist_selector.js     # 画师风格视觉选择器前端核心面板交互逻辑
 │   ├── anima_character_selector.js  # 角色图鉴选择器前端核心属性检索与交互面板
+│   ├── anima_lora_selector.js       # 多 LoRA 搜索、下载、本地预览与缓存面板
+│   ├── anima_image_utils.js         # 共享图片加载缓存工具
 │   ├── data.js                      # 40,000+ 详尽画师数据库 (含 CDN 映射与独特度评分)
 │   ├── character_data.js            # 动漫角色发色、瞳色、作品系列、同人热度多维数据库
 │   └── i18n.js                      # 多语言智能切换路由 (跟随 Comfy.Locale)

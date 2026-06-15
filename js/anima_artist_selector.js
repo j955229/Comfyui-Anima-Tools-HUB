@@ -1,5 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { t } from "./i18n.js";
+import { markImageLoaded, isImageLoaded } from "./anima_image_utils.js";
 
 app.registerExtension({
     name: "AnimaArtistTagSelector.extension",
@@ -1093,6 +1094,20 @@ async function openArtistSelectorModal(node, tagsWidget) {
     };
     gridArea.appendChild(listContainer);
 
+    // 创建图片懒加载观察器（绑定到 list 滚动容器）
+    const artistImageObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const el = entry.target;
+                if (el.dataset.lazySrc) {
+                    el.src = el.dataset.lazySrc;
+                    delete el.dataset.lazySrc;
+                }
+                artistImageObserver.unobserve(el);
+            }
+        });
+    }, { root: listContainer, rootMargin: "300px" });
+
     // 6. 构建分页控制栏 (Pagination Bar - 嵌入在网格区底部)
     const paginationBar = document.createElement("div");
     paginationBar.className = "anima-pagination";
@@ -2037,12 +2052,16 @@ async function openArtistSelectorModal(node, tagsWidget) {
                 img.loading = "lazy";
                 
                 const partition = item.p || 1;
-                img.src = getImgUrl(partition, item.id);
+                const imgUrl = getImgUrl(partition, item.id);
                 
                 let loader = null;
-                if (img.complete && img.naturalWidth !== 0) {
+                if (isImageLoaded(imgUrl)) {
+                    // 缓存命中：直接显示，跳过 spinner
+                    img.src = imgUrl;
                     img.style.opacity = "1";
                 } else {
+                    // 未缓存：懒加载
+                    img.dataset.lazySrc = imgUrl;
                     loader = document.createElement("div");
                     loader.className = "anima-shimmer";
                     const spinner = document.createElement("div");
@@ -2054,6 +2073,7 @@ async function openArtistSelectorModal(node, tagsWidget) {
                 img.onload = () => {
                     img.style.opacity = "1";
                     loader?.remove();
+                    markImageLoaded(imgUrl);
                 };
                 img.onerror = () => {
                     img.style.display = "none";
@@ -2061,6 +2081,7 @@ async function openArtistSelectorModal(node, tagsWidget) {
                     placeholder.style.opacity = "1"; 
                 };
                 card.appendChild(img);
+                artistImageObserver.observe(img);
             }
 
             const mask = document.createElement("div");
@@ -2218,6 +2239,7 @@ async function openArtistSelectorModal(node, tagsWidget) {
 
     // 关闭弹窗
     function closeModal() {
+        artistImageObserver.disconnect();
         modalOverlay.remove();
         styleSheet.remove();
     }

@@ -1,5 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { t } from "./i18n.js";
+import { markImageLoaded, isImageLoaded } from "./anima_image_utils.js";
 import "./character_data.js";
 
 app.registerExtension({
@@ -1129,6 +1130,20 @@ async function openCharacterSelectorModal(node, tagsWidget) {
         localStorage.setItem(SCROLL_STORAGE_KEY, listContainer.scrollTop);
     };
     gridArea.appendChild(listContainer);
+
+    // 创建图片懒加载观察器（绑定到 list 滚动容器）
+    const charImageObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const el = entry.target;
+                if (el.dataset.lazySrc) {
+                    el.src = el.dataset.lazySrc;
+                    delete el.dataset.lazySrc;
+                }
+                charImageObserver.unobserve(el);
+            }
+        });
+    }, { root: listContainer, rootMargin: "300px" });
 
     // 分页控制栏 (Pagination Bar - 嵌入在网格区底部)
     const paginationBar = document.createElement("div");
@@ -2351,12 +2366,16 @@ async function openCharacterSelectorModal(node, tagsWidget) {
                     transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
                 `;
                 img.loading = "lazy";
-                img.src = getImgUrl(item.name, item.copyright);
+                const imgUrl = getImgUrl(item.name, item.copyright);
                 
                 let loader = null;
-                if (img.complete && img.naturalWidth !== 0) {
+                if (isImageLoaded(imgUrl)) {
+                    // 缓存命中：直接显示，跳过 spinner
+                    img.src = imgUrl;
                     img.style.opacity = "1";
                 } else {
+                    // 未缓存：懒加载
+                    img.dataset.lazySrc = imgUrl;
                     loader = document.createElement("div");
                     loader.className = "anima-shimmer";
                     const spinner = document.createElement("div");
@@ -2368,6 +2387,7 @@ async function openCharacterSelectorModal(node, tagsWidget) {
                 img.onload = () => {
                     img.style.opacity = "1";
                     loader?.remove();
+                    markImageLoaded(imgUrl);
                 };
                 img.onerror = () => {
                     img.style.display = "none";
@@ -2375,6 +2395,7 @@ async function openCharacterSelectorModal(node, tagsWidget) {
                     placeholder.style.opacity = "1";
                 };
                 card.appendChild(img);
+                charImageObserver.observe(img);
             }
 
             const mask = document.createElement("div");
@@ -2509,6 +2530,7 @@ async function openCharacterSelectorModal(node, tagsWidget) {
 
     // 隐藏/关闭弹窗
     function closeModal() {
+        charImageObserver.disconnect();
         modalOverlay.remove();
     }
 

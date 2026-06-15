@@ -90,5 +90,27 @@
     "outputs": {
       "0": { "name": "文本" }
     }
+  },
+  "AnimaMultiLoraLoader": {
+    "display_name": "Anima 多 LoRA 加载器",
+    "description": "通过带缓存的视觉面板选择、下载、预览并批量应用多个 Anima LoRA 模型。",
+    "inputs": {
+      "model": {
+        "name": "模型",
+        "tooltip": "要应用所选 LoRA 的基础模型。"
+      },
+      "clip": {
+        "name": "CLIP",
+        "tooltip": "要应用所选 LoRA 的 CLIP 实例。"
+      },
+      "lora_list_json": {
+        "name": "LoRA 列表",
+        "tooltip": "由可视化 LoRA 选择器维护的 JSON 数据，包含文件名与强度配置。"
+      }
+    },
+    "outputs": {
+      "0": { "name": "模型" },
+      "1": { "name": "CLIP" }
+    }
   }
 }

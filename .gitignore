@@ -17,6 +17,9 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
+# Thumbnail cache (generated at runtime)
+.thumb_cache/
+
 # Antigravity CLI temporary workspace files
 .antigravitycli/
 .gemini/

@@ -328,6 +328,14 @@ import json
 import os
 import hashlib
 import threading
+import time
+import urllib.parse
+import urllib.request
+from io import BytesIO
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
 
 def get_favorites_path():
     try:
@@ -426,50 +434,195 @@ def scan_loras_in_directory(directory: str) -> list:
                 results.append(rel_path)
     return results
 
+def get_anima_tools_user_dir() -> str:
+    try:
+        user_dir = folder_paths.get_user_directory()
+    except AttributeError:
+        user_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "user"))
+        if not os.path.exists(user_dir):
+            user_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "user"))
+    cache_root = os.path.join(user_dir, "anima_tools")
+    os.makedirs(cache_root, exist_ok=True)
+    return cache_root
+
+def get_lora_roots() -> list[str]:
+    roots = []
+    try:
+        for path in folder_paths.get_folder_paths("loras"):
+            if path and os.path.isdir(path):
+                roots.append(os.path.abspath(path))
+    except Exception:
+        pass
+
+    fallback = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "models", "loras"))
+    if os.path.isdir(fallback):
+        roots.append(fallback)
+
+    config = load_lora_config()
+    custom_dir = config.get("custom_lora_dir", "").strip()
+    if custom_dir and os.path.isdir(custom_dir):
+        roots.append(os.path.abspath(custom_dir))
+
+    deduped = []
+    seen = set()
+    for root in roots:
+        key = os.path.normcase(os.path.abspath(root))
+        if key not in seen:
+            seen.add(key)
+            deduped.append(root)
+    return deduped
+
+def scan_loras_with_info() -> list[dict]:
+    results = []
+    seen = set()
+    for root in get_lora_roots():
+        for rel_path in scan_loras_in_directory(root):
+            if rel_path in seen:
+                continue
+            abs_path = os.path.join(root, rel_path.replace("/", os.sep))
+            if not os.path.isfile(abs_path):
+                continue
+            seen.add(rel_path)
+            results.append({"filename": rel_path, "abs_path": abs_path})
+    return results
+
+def resolve_lora_abs_path(filename: str) -> str | None:
+    if not filename:
+        return None
+    filename = filename.replace("\\", "/").strip()
+    if not filename or filename.endswith("/"):
+        return None
+
+    try:
+        abs_path = folder_paths.get_full_path("loras", filename)
+    except Exception:
+        abs_path = None
+
+    if abs_path and os.path.exists(abs_path):
+        return abs_path
+
+    for root in get_lora_roots():
+        candidate = os.path.join(root, filename.replace("/", os.sep))
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+def find_companion_preview(abs_path: str) -> str | None:
+    if not abs_path:
+        return None
+    base_no_ext = os.path.splitext(abs_path)[0]
+    for ext in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".webm"]:
+        for suffix in ["", ".preview"]:
+            preview_file = base_no_ext + suffix + ext
+            if os.path.exists(preview_file):
+                return preview_file
+    return None
+
+def get_preview_cache_key(abs_path: str, preview_file: str | None = None) -> str:
+    stat_path = preview_file if preview_file and os.path.exists(preview_file) else abs_path
+    try:
+        stat = os.stat(stat_path)
+        raw = f"{os.path.abspath(stat_path)}|{int(stat.st_mtime)}|{stat.st_size}"
+    except OSError:
+        raw = f"{os.path.abspath(stat_path)}|missing"
+    return hashlib.sha256(raw.encode("utf-8", errors="ignore")).hexdigest()[:20]
+
+def make_display_name(filename: str) -> str:
+    name = os.path.basename(filename.replace("\\", "/"))
+    if name.lower().endswith(".safetensors"):
+        name = name[:-12]
+    return name
+
+def read_lora_meta_summary(abs_path: str) -> tuple[str, dict]:
+    meta_path = os.path.splitext(abs_path)[0] + ".json"
+    if not os.path.exists(meta_path):
+        return "missing", {}
+    try:
+        with open(meta_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        model = data.get("model", {}) if isinstance(data, dict) else {}
+        version = data.get("version", {}) if isinstance(data, dict) else {}
+        creator = model.get("creator", {}) if isinstance(model.get("creator"), dict) else {}
+        return "cached", {
+            "name": model.get("name") or version.get("modelName") or "",
+            "creator": creator.get("username") or "",
+            "version": version.get("name") or "",
+            "trained_words": version.get("trainedWords", [])[:8] if isinstance(version.get("trainedWords"), list) else [],
+            "preview_url": (version.get("images") or [{}])[0].get("url", "") if isinstance(version.get("images"), list) and version.get("images") else ""
+        }
+    except Exception as e:
+        print(f"[Anima Tools] Failed to read metadata summary for {abs_path}: {e}")
+        return "missing", {}
+
 @PromptServer.instance.routes.get("/anima-tools/lora/local")
 async def lora_local_list_api(request):
     try:
-        # 1. Resolve Default Download Location
-        try:
-            roots = folder_paths.get_folder_paths("loras")
-            default_dir = roots[0] if (roots and os.path.isdir(roots[0])) else None
-        except Exception:
-            default_dir = None
-            
-        if not default_dir:
-            default_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "models", "loras"))
-            
-        # 2. Resolve User's Custom Download Location
-        config = load_lora_config()
-        custom_dir = config.get("custom_lora_dir", "").strip()
-        
-        local_loras = []
-        seen = set()
-        
-        # Scan default directory
-        if default_dir and os.path.isdir(default_dir):
-            for path in scan_loras_in_directory(default_dir):
-                if path not in seen:
-                    seen.add(path)
-                    local_loras.append(path)
-                    
-        # Scan custom user directory
-        if custom_dir and os.path.isdir(custom_dir) and os.path.abspath(custom_dir) != os.path.abspath(default_dir):
-            for path in scan_loras_in_directory(custom_dir):
-                if path not in seen:
-                    seen.add(path)
-                    local_loras.append(path)
-                    
+        local_loras = [item["filename"] for item in scan_loras_with_info()]
         return web.json_response(local_loras)
     except Exception as e:
         print(f"[Anima Tools] Local LoRA List API error: {e}")
         return web.json_response([], status=500)
+
+@PromptServer.instance.routes.get("/anima-tools/lora/manifest")
+async def lora_manifest_api(request):
+    try:
+        try:
+            width = max(80, min(int(request.query.get("width", "320")), 1024))
+        except (ValueError, TypeError):
+            width = 320
+
+        items = []
+        for info in scan_loras_with_info():
+            filename = info["filename"]
+            abs_path = info["abs_path"]
+            try:
+                stat = os.stat(abs_path)
+            except OSError:
+                continue
+
+            preview_file = find_companion_preview(abs_path)
+            cache_key = get_preview_cache_key(abs_path, preview_file)
+            metadata_status, meta_summary = read_lora_meta_summary(abs_path)
+            items.append({
+                "filename": filename,
+                "display_name": meta_summary.get("name") or make_display_name(filename),
+                "size": stat.st_size,
+                "mtime": int(stat.st_mtime),
+                "cache_key": cache_key,
+                "thumb_url": f"/anima-tools/lora/local-preview?filename={urllib.parse.quote(filename)}&width={width}&v={cache_key}",
+                "has_preview": bool(preview_file),
+                "metadata_status": metadata_status,
+                "meta_summary": meta_summary,
+                "_preview_file": preview_file,
+                "_abs_path": abs_path,
+            })
+
+        items.sort(key=lambda item: item["display_name"].lower())
+        for item in items[:160]:
+            preview_file = item.get("_preview_file")
+            if preview_file and width > 0:
+                _ensure_local_thumbnail_async(preview_file, width, delay=2.0)
+            elif item.get("meta_summary", {}).get("preview_url"):
+                _ensure_local_preview_download_async(item.get("_abs_path"), item["meta_summary"]["preview_url"], delay=3.0)
+        for item in items:
+            item.pop("_preview_file", None)
+            item.pop("_abs_path", None)
+        return web.json_response({
+            "items": items,
+            "count": len(items),
+            "width": width,
+            "generated_at": int(time.time())
+        })
+    except Exception as e:
+        print(f"[Anima Tools] LoRA Manifest API error: {e}")
+        return web.json_response({"items": [], "error": str(e)}, status=500)
 
 @PromptServer.instance.routes.get("/anima-tools/lora/search")
 async def lora_search_api(request):
     try:
         query = request.query.get("query", "")
         tag = request.query.get("tag", "")
+        category = request.query.get("category", "")
         sort = request.query.get("sort", "Highest Rated")
         cursor = request.query.get("cursor", "")
         limit_str = request.query.get("limit", "40")
@@ -478,7 +631,7 @@ async def lora_search_api(request):
         except ValueError:
             limit = 40
             
-        result = search_civitai_loras(query=query, tag=tag, sort=sort, cursor=cursor, limit=limit)
+        result = search_civitai_loras(query=query, tag=tag, category=category, sort=sort, cursor=cursor, limit=limit)
         return web.json_response(result or {"items": [], "metadata": {}})
     except Exception as e:
         print(f"[Anima Tools] Search API error: {e}")
@@ -495,6 +648,10 @@ async def lora_download_api(request):
         
         if not version_id or not download_url or not filename:
             return web.json_response({"success": False, "error": "Missing parameters"}, status=400)
+
+        parsed_url = urllib.parse.urlparse(str(download_url))
+        if parsed_url.scheme != "https" or parsed_url.netloc.lower() not in ("civitai.com", "www.civitai.com", "civitai.red"):
+            return web.json_response({"success": False, "error": "Only Civitai HTTPS downloads are supported"}, status=400)
             
         task_id = start_download_task(version_id, download_url, filename, metadata=metadata)
         return web.json_response({"success": True, "task_id": task_id})
@@ -532,16 +689,9 @@ async def lora_local_metadata_api(request):
         if filename in _LOCAL_METADATA_CACHE:
             return web.json_response({"success": True, "metadata": _LOCAL_METADATA_CACHE[filename]})
             
-        try:
-            abs_path = folder_paths.get_full_path("loras", filename)
-        except Exception:
-            abs_path = None
+        abs_path = resolve_lora_abs_path(filename)
             
-        if not abs_path or not os.path.exists(abs_path):
-            save_dir = get_lora_save_dir()
-            abs_path = os.path.join(save_dir, filename)
-            
-        if os.path.exists(abs_path):
+        if abs_path and os.path.exists(abs_path):
             meta_path = os.path.splitext(abs_path)[0] + ".json"
             
             # 1. 优先读取已存在的本地 JSON 配置文件（支持旧版格式自动升级与自愈）
@@ -640,40 +790,268 @@ async def lora_local_metadata_api(request):
         return web.json_response({"success": False, "error": str(e)}, status=500)
 
 
+# 缩略图磁盘缓存目录，放在 user 下以便 ComfyUI 重启和插件升级后继续复用
+_THUMB_CACHE_DIR = os.path.join(get_anima_tools_user_dir(), "thumb_cache")
+_REMOTE_THUMB_CACHE_DIR = os.path.join(get_anima_tools_user_dir(), "remote_thumb_cache")
+_LOCAL_THUMB_JOBS = set()
+_LOCAL_THUMB_QUEUE = []
+_LOCAL_THUMB_WORKER_ACTIVE = False
+_LOCAL_THUMB_LOCK = threading.Lock()
+_LOCAL_PREVIEW_DOWNLOAD_JOBS = set()
+_LOCAL_PREVIEW_DOWNLOAD_QUEUE = []
+_LOCAL_PREVIEW_DOWNLOAD_WORKER_ACTIVE = False
+_LOCAL_PREVIEW_DOWNLOAD_LOCK = threading.Lock()
+
+def _preview_extension_from_url(url: str) -> str:
+    lower = (url or "").lower()
+    if ".jpg" in lower or ".jpeg" in lower:
+        return ".jpg"
+    if ".webp" in lower:
+        return ".webp"
+    return ".png"
+
+def _local_preview_download_worker(delay: float = 0.0) -> None:
+    global _LOCAL_PREVIEW_DOWNLOAD_WORKER_ACTIVE
+    if delay > 0:
+        time.sleep(delay)
+    while True:
+        with _LOCAL_PREVIEW_DOWNLOAD_LOCK:
+            if not _LOCAL_PREVIEW_DOWNLOAD_QUEUE:
+                _LOCAL_PREVIEW_DOWNLOAD_WORKER_ACTIVE = False
+                return
+            image_url, preview_path, job_key = _LOCAL_PREVIEW_DOWNLOAD_QUEUE.pop(0)
+        try:
+            if not os.path.exists(preview_path):
+                download_preview_image(image_url, preview_path)
+        finally:
+            with _LOCAL_PREVIEW_DOWNLOAD_LOCK:
+                _LOCAL_PREVIEW_DOWNLOAD_JOBS.discard(job_key)
+
+def _ensure_local_preview_download_async(abs_path: str, image_url: str, delay: float = 3.0) -> None:
+    global _LOCAL_PREVIEW_DOWNLOAD_WORKER_ACTIVE
+    if not abs_path or not image_url or not image_url.lower().startswith(("http://", "https://")):
+        return
+    preview_path = os.path.splitext(abs_path)[0] + _preview_extension_from_url(image_url)
+    if os.path.exists(preview_path):
+        return
+    job_key = f"{preview_path}:{image_url}"
+    with _LOCAL_PREVIEW_DOWNLOAD_LOCK:
+        if job_key in _LOCAL_PREVIEW_DOWNLOAD_JOBS:
+            return
+        _LOCAL_PREVIEW_DOWNLOAD_JOBS.add(job_key)
+        _LOCAL_PREVIEW_DOWNLOAD_QUEUE.append((image_url, preview_path, job_key))
+        if _LOCAL_PREVIEW_DOWNLOAD_WORKER_ACTIVE:
+            return
+        _LOCAL_PREVIEW_DOWNLOAD_WORKER_ACTIVE = True
+    threading.Thread(target=_local_preview_download_worker, args=(delay,), daemon=True).start()
+
+def _thumbnail_cache_path(preview_file: str, target_width: int) -> str:
+    stat = os.stat(preview_file)
+    cache_key = hashlib.sha256(
+        f"{os.path.abspath(preview_file)}|{int(stat.st_mtime)}|{stat.st_size}|{target_width}".encode("utf-8", errors="ignore")
+    ).hexdigest()
+    return os.path.join(_THUMB_CACHE_DIR, f"{cache_key}.webp")
+
+def _get_thumbnail(preview_file: str, target_width: int, generate: bool = True) -> tuple[bytes, str] | None:
+    """生成并缓存缩略图，返回 (图片bytes, content_type) 或 None"""
+    if Image is None:
+        return None
+
+    # 视频文件不处理缩略图
+    ext_lower = os.path.splitext(preview_file)[1].lower()
+    if ext_lower in (".mp4", ".webm", ".gif"):
+        return None
+
+    # 检查磁盘缓存
+    cache_path = _thumbnail_cache_path(preview_file, target_width)
+
+    if os.path.exists(cache_path):
+        with open(cache_path, "rb") as f:
+            return f.read(), "image/webp"
+    if not generate:
+        return None
+
+    try:
+        img = Image.open(preview_file)
+        img = img.convert("RGB")
+        if target_width > 0 and img.width > target_width:
+            ratio = target_width / img.width
+            new_size = (target_width, int(img.height * ratio))
+            img = img.resize(new_size, Image.LANCZOS)
+
+        buf = BytesIO()
+        img.save(buf, format="WEBP", quality=82)
+        thumb_data = buf.getvalue()
+
+        # 写入磁盘缓存
+        os.makedirs(_THUMB_CACHE_DIR, exist_ok=True)
+        with open(cache_path, "wb") as f:
+            f.write(thumb_data)
+
+        return thumb_data, "image/webp"
+    except Exception as e:
+        print(f"[Anima Tools] Thumbnail generation failed: {e}")
+        return None
+
+def _warm_local_thumbnail(preview_file: str, target_width: int) -> None:
+    try:
+        _get_thumbnail(preview_file, target_width, generate=True)
+    finally:
+        job_key = f"{preview_file}:{target_width}"
+        with _LOCAL_THUMB_LOCK:
+            _LOCAL_THUMB_JOBS.discard(job_key)
+
+def _local_thumbnail_worker(delay: float = 0.0) -> None:
+    global _LOCAL_THUMB_WORKER_ACTIVE
+    if delay > 0:
+        time.sleep(delay)
+    while True:
+        with _LOCAL_THUMB_LOCK:
+            if not _LOCAL_THUMB_QUEUE:
+                _LOCAL_THUMB_WORKER_ACTIVE = False
+                return
+            preview_file, target_width = _LOCAL_THUMB_QUEUE.pop(0)
+        _warm_local_thumbnail(preview_file, target_width)
+
+def _ensure_local_thumbnail_async(preview_file: str, target_width: int, delay: float = 0.0) -> None:
+    global _LOCAL_THUMB_WORKER_ACTIVE
+    if Image is None or target_width <= 0:
+        return
+    try:
+        cache_path = _thumbnail_cache_path(preview_file, target_width)
+        if os.path.exists(cache_path):
+            return
+    except Exception:
+        return
+    job_key = f"{preview_file}:{target_width}"
+    with _LOCAL_THUMB_LOCK:
+        if job_key in _LOCAL_THUMB_JOBS:
+            return
+        _LOCAL_THUMB_JOBS.add(job_key)
+        _LOCAL_THUMB_QUEUE.append((preview_file, target_width))
+        if _LOCAL_THUMB_WORKER_ACTIVE:
+            return
+        _LOCAL_THUMB_WORKER_ACTIVE = True
+    threading.Thread(target=_local_thumbnail_worker, args=(delay,), daemon=True).start()
+
+def _placeholder_svg_response(cache_control: str = "no-store") -> web.Response:
+    svg_content = (
+        "<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'>"
+        "<rect width='100' height='100' fill='#222'/>"
+        "<text x='50%' y='50%' font-size='10' fill='#666' dominant-baseline='middle' text-anchor='middle'>No Preview</text>"
+        "</svg>"
+    )
+    return web.Response(body=svg_content, content_type="image/svg+xml", headers={"Cache-Control": cache_control})
+
+_REMOTE_THUMB_JOBS = set()
+_REMOTE_THUMB_LOCK = threading.Lock()
+
+def _remote_thumb_cache_path(cache_key: str, width: int) -> str:
+    safe_key = "".join(ch for ch in cache_key if ch.isalnum())[:80] or "remote"
+    return os.path.join(_REMOTE_THUMB_CACHE_DIR, f"{safe_key}_{width}.webp")
+
+def _download_remote_thumbnail(url: str, cache_path: str, width: int, job_key: str) -> None:
+    try:
+        if Image is None:
+            return
+        req = urllib.request.Request(url, headers={"User-Agent": "ComfyUI-Anima-Tools/1.0"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = resp.read()
+
+        img = Image.open(BytesIO(data)).convert("RGB")
+        if width > 0 and img.width > width:
+            ratio = width / img.width
+            img = img.resize((width, int(img.height * ratio)), Image.LANCZOS)
+
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        tmp_path = cache_path + ".tmp"
+        img.save(tmp_path, format="WEBP", quality=82)
+        os.replace(tmp_path, cache_path)
+    except Exception as e:
+        print(f"[Anima Tools] Remote preview cache failed: {e}")
+    finally:
+        with _REMOTE_THUMB_LOCK:
+            _REMOTE_THUMB_JOBS.discard(job_key)
+
+@PromptServer.instance.routes.get("/anima-tools/lora/remote-preview")
+async def lora_remote_preview_api(request):
+    try:
+        try:
+            width = max(80, min(int(request.query.get("width", "320")), 1024))
+        except (ValueError, TypeError):
+            width = 320
+
+        source_url = request.query.get("url", "").strip()
+        url_hash = request.query.get("url_hash", "").strip()
+        if source_url:
+            cache_key = hashlib.sha256(source_url.encode("utf-8", errors="ignore")).hexdigest()
+        else:
+            cache_key = url_hash
+
+        if not cache_key:
+            return _placeholder_svg_response()
+
+        cache_path = _remote_thumb_cache_path(cache_key, width)
+        if os.path.exists(cache_path):
+            resp = web.FileResponse(cache_path)
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            return resp
+
+        if source_url and source_url.lower().startswith(("http://", "https://")):
+            if Image is None:
+                raise web.HTTPFound(source_url)
+            job_key = f"{cache_key}:{width}"
+            with _REMOTE_THUMB_LOCK:
+                if job_key not in _REMOTE_THUMB_JOBS:
+                    _REMOTE_THUMB_JOBS.add(job_key)
+                    threading.Thread(
+                        target=_download_remote_thumbnail,
+                        args=(source_url, cache_path, width, job_key),
+                        daemon=True
+                    ).start()
+
+        return _placeholder_svg_response("no-store")
+    except web.HTTPException:
+        raise
+    except Exception as e:
+        print(f"[Anima Tools] Remote Preview API error: {e}")
+        return _placeholder_svg_response()
+
 @PromptServer.instance.routes.get("/anima-tools/lora/local-preview")
 async def lora_local_preview_api(request):
     try:
         filename = request.query.get("filename", "")
         if not filename:
             return web.Response(status=400)
-            
-        # 统一将反斜杠替换为正斜杠，防止 Windows 路径转义解析错误
-        filename = filename.replace("\\", "/")
         
+        # 解析目标缩略图宽度（默认不缩放以保持向后兼容）
         try:
-            abs_path = folder_paths.get_full_path("loras", filename)
-        except Exception:
-            abs_path = None
+            target_width = int(request.query.get("width", "0"))
+        except (ValueError, TypeError):
+            target_width = 0
             
-        if not abs_path or not os.path.exists(abs_path):
-            save_dir = get_lora_save_dir()
-            abs_path = os.path.join(save_dir, filename)
+        filename = filename.replace("\\", "/")
+        abs_path = resolve_lora_abs_path(filename)
             
-        if os.path.exists(abs_path):
-            base_no_ext = os.path.splitext(abs_path)[0]
-            for ext in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".webm"]:
-                preview_file = base_no_ext + ext
-                if os.path.exists(preview_file):
-                    return web.FileResponse(preview_file)
+        if abs_path and os.path.exists(abs_path):
+            preview_file = find_companion_preview(abs_path)
+            if preview_file:
+                immutable_cache = "public, max-age=31536000, immutable" if request.query.get("v") else "public, max-age=86400"
+                if target_width > 0:
+                    thumb = _get_thumbnail(preview_file, target_width, generate=False)
+                    if thumb:
+                        thumb_data, content_type = thumb
+                        return web.Response(
+                            body=thumb_data,
+                            content_type=content_type,
+                            headers={"Cache-Control": immutable_cache}
+                        )
+                resp = web.FileResponse(preview_file)
+                resp.headers["Cache-Control"] = immutable_cache
+                return resp
                     
         # 找不到本地预览图时，返回默认的 No Preview 占位图，状态设为 200，防止控制台大量 404 报错
-        svg_content = (
-            "<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'>"
-            "<rect width='100' height='100' fill='#222'/>"
-            "<text x='50%' y='50%' font-size='10' fill='#666' dominant-baseline='middle' text-anchor='middle'>No Preview</text>"
-            "</svg>"
-        )
-        return web.Response(body=svg_content, content_type="image/svg+xml")
+        return _placeholder_svg_response("public, max-age=3600")
     except Exception as e:
         print(f"[Anima Tools] Local Preview API error: {e}")
         return web.Response(status=500)
@@ -730,13 +1108,7 @@ def delete_local_lora_files(filename: str) -> bool:
         # Invalidate metadata cache
         _LOCAL_METADATA_CACHE.pop(filename, None)
         
-        try:
-            abs_path = folder_paths.get_full_path("loras", filename)
-        except Exception:
-            abs_path = None
-            
-        if not abs_path or not os.path.exists(abs_path):
-            abs_path = os.path.join(get_lora_save_dir(), filename)
+        abs_path = resolve_lora_abs_path(filename)
             
         if not abs_path:
             return False
