@@ -984,6 +984,25 @@ def _placeholder_svg_response(cache_control: str = "no-store") -> web.Response:
 _REMOTE_THUMB_JOBS = set()
 _REMOTE_THUMB_LOCK = threading.Lock()
 
+def _clear_cache_directory(directory: str) -> tuple[int, int, list[str]]:
+    deleted_count = 0
+    deleted_bytes = 0
+    errors = []
+    if not os.path.isdir(directory):
+        return deleted_count, deleted_bytes, errors
+
+    for name in os.listdir(directory):
+        path = os.path.join(directory, name)
+        if not os.path.isfile(path):
+            continue
+        try:
+            deleted_bytes += os.path.getsize(path)
+            os.remove(path)
+            deleted_count += 1
+        except Exception as e:
+            errors.append(f"{name}: {e}")
+    return deleted_count, deleted_bytes, errors
+
 def _remote_thumb_cache_path(cache_key: str, width: int) -> str:
     safe_key = "".join(ch for ch in cache_key if ch.isalnum())[:80] or "remote"
     return os.path.join(_REMOTE_THUMB_CACHE_DIR, f"{safe_key}_{width}.webp")
@@ -1093,6 +1112,39 @@ async def lora_local_preview_api(request):
     except Exception as e:
         print(f"[Anima Tools] Local Preview API error: {e}")
         return web.Response(status=500)
+
+@PromptServer.instance.routes.post("/anima-tools/lora/clear-cache")
+async def lora_clear_cache_api(request):
+    try:
+        with _LOCAL_THUMB_LOCK:
+            _LOCAL_THUMB_JOBS.clear()
+            _LOCAL_THUMB_QUEUE.clear()
+        with _REMOTE_THUMB_LOCK:
+            _REMOTE_THUMB_JOBS.clear()
+
+        local_count, local_bytes, local_errors = _clear_cache_directory(_THUMB_CACHE_DIR)
+        remote_count, remote_bytes, remote_errors = _clear_cache_directory(_REMOTE_THUMB_CACHE_DIR)
+        errors = local_errors + remote_errors
+
+        return web.json_response({
+            "success": len(errors) == 0,
+            "deleted_files": local_count + remote_count,
+            "deleted_bytes": local_bytes + remote_bytes,
+            "local_thumb_cache": {
+                "path": _THUMB_CACHE_DIR,
+                "deleted_files": local_count,
+                "deleted_bytes": local_bytes,
+            },
+            "remote_thumb_cache": {
+                "path": _REMOTE_THUMB_CACHE_DIR,
+                "deleted_files": remote_count,
+                "deleted_bytes": remote_bytes,
+            },
+            "errors": errors[:20],
+        })
+    except Exception as e:
+        print(f"[Anima Tools] Clear LoRA cache API error: {e}")
+        return web.json_response({"success": False, "error": str(e)}, status=500)
 
 @PromptServer.instance.routes.get("/anima-tools/lora/download-status")
 async def lora_download_status_api(request):

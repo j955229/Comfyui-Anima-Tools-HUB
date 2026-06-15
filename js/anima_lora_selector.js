@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { t } from "./i18n.js";
-import { markImageLoaded, isImageLoaded } from "./anima_image_utils.js";
+import { markImageLoaded, isImageLoaded, clearImageLoadedCache } from "./anima_image_utils.js";
 
 app.registerExtension({
     name: "AnimaMultiLoraLoader.extension",
@@ -355,6 +355,20 @@ async function cacheSet(key, value) {
     });
 }
 
+async function cacheDelete(key) {
+    try {
+        localStorage.removeItem(`anima-cache:${key}`);
+    } catch (_) {}
+    const db = await openAnimaCacheDb();
+    if (!db) return;
+    return new Promise((resolve) => {
+        const tx = db.transaction("kv", "readwrite");
+        tx.objectStore("kv").delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+    });
+}
+
 function clearStaleLoader(loader, delay = 8000) {
     if (!loader) return;
     setTimeout(() => {
@@ -520,6 +534,7 @@ async function openLoraSelectorModal(node) {
     let previewRenderGeneration = 0;
     let loraManifestSignature = "";
     let searchDebounceTimer = null;
+    let previewCacheBust = "";
     let civitaiApiKeyDownloadWarningShown = false;
     const notifiedDownloadFailures = new Set();
     const startedDownloadTaskIds = new Set();
@@ -690,11 +705,12 @@ async function openLoraSelectorModal(node) {
 
     function getLocalPreviewUrl(filename, width = 320) {
         const item = getManifestItem(filename);
+        const cacheBust = previewCacheBust ? `&cache_bust=${encodeURIComponent(previewCacheBust)}` : "";
         if (item && width === LORA_MANIFEST_WIDTH && item.thumb_url) {
-            return item.thumb_url;
+            return `${item.thumb_url}${cacheBust}`;
         }
         const version = item?.cache_key ? `&v=${encodeURIComponent(item.cache_key)}` : "";
-        return `/anima-tools/lora/local-preview?filename=${encodeURIComponent(filename)}&width=${width}${version}`;
+        return `/anima-tools/lora/local-preview?filename=${encodeURIComponent(filename)}&width=${width}${version}${previewCacheBust ? `&cache_bust=${encodeURIComponent(previewCacheBust)}` : ""}`;
     }
 
     function getConfiguredAnimaLoraDir() {
@@ -770,6 +786,30 @@ async function openLoraSelectorModal(node) {
         } catch (e) {
             console.error("[Anima Tools] Failed to refresh LoRA manifest", e);
             return false;
+        }
+    }
+
+    async function clearLoraSelectorCaches() {
+        previewCacheBust = String(Date.now());
+        globalLoraManifest = null;
+        globalLocalLoras = null;
+        loraManifestItems = [];
+        loraManifestMap = new Map();
+        loraManifestSignature = "";
+        clearImageLoadedCache();
+
+        try {
+            localStorage.removeItem("anima-civitai-search-cache");
+        } catch (_) {}
+        await cacheDelete(LORA_MANIFEST_CACHE_KEY);
+
+        try {
+            const resp = await fetch("/anima-tools/lora/clear-cache", { method: "POST" });
+            if (!resp.ok) {
+                console.warn("[Anima Tools] Backend cache clear failed", resp.status);
+            }
+        } catch (e) {
+            console.warn("[Anima Tools] Backend cache clear request failed", e);
         }
     }
 
@@ -1385,9 +1425,19 @@ async function openLoraSelectorModal(node) {
     clearCacheBtn.onmouseout = () => {
         clearCacheBtn.style.background = "rgba(255, 255, 255, 0.08)";
     };
-    clearCacheBtn.onclick = () => {
-        localStorage.removeItem("anima-civitai-search-cache");
-        runSearchFromInput(true);
+    clearCacheBtn.onclick = async () => {
+        if (clearCacheBtn.disabled) return;
+        const originalText = clearCacheBtn.innerText;
+        clearCacheBtn.disabled = true;
+        clearCacheBtn.innerText = t("Clearing...");
+        try {
+            await clearLoraSelectorCaches();
+            await refreshManifest({ rerender: false });
+            runSearchFromInput(true);
+        } finally {
+            clearCacheBtn.disabled = false;
+            clearCacheBtn.innerText = originalText;
+        }
     };
     filterRow.appendChild(clearCacheBtn);
 

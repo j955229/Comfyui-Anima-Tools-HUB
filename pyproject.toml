@@ -1,6 +1,6 @@
 [project]
 name = "comfyui-anima-tools"
-version = "1.1.0"
+version = "1.1.1"
 description = "专为 ComfyUI 设计的高性能、多维度二次元画师、角色视觉选择与 Anima LoRA 搜索下载加载套件 (Artist, Character & Anima LoRA Visual Selector)"
 readme = "README.md"
 license = { text = "MIT" }
