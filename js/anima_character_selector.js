@@ -1,6 +1,7 @@
 import { app } from "../../scripts/app.js";
 import { t } from "./i18n.js";
 import { markImageLoaded, isImageLoaded } from "./anima_image_utils.js";
+import { createPromoLinks } from "./anima_promo_links.js";
 import "./character_data.js";
 
 let characterOfficialDataPromise = null;
@@ -153,21 +154,9 @@ function formatCharacterDisplayName(item) {
 }
 
 async function openCharacterSelectorModal(node, tagsWidget) {
-    // 1. 解析当前节点中已经选中的 tags
-    const currentTagsText = tagsWidget.value || "";
-    const normalizedCurrentTagsText = currentTagsText.replace(/_raw_:/g, "");
-    const currentTokens = splitPromptTokens(normalizedCurrentTagsText);
-    const currentTokenSet = new Set(currentTokens.map(normalizePromptToken));
+    // Selection is intentionally one-way: only clicks inside this selector mark cards as selected.
+    // Existing node text is not reverse-synced into checked cards.
     const selectedCharacters = new Set();
-    (window.characterData || []).forEach(item => {
-        const nameKey = normalizePromptToken(item.name);
-        const triggerKeys = splitPromptTokens(getCharacterTrigger(item)).map(normalizePromptToken);
-        const matchesName = nameKey && currentTokenSet.has(nameKey);
-        const matchesTrigger = triggerKeys.length > 0 && triggerKeys.every(key => currentTokenSet.has(key));
-        if (matchesName || matchesTrigger) {
-            selectedCharacters.add(item.name);
-        }
-    });
 
     // 加载后端持久化配置
     let favoritesConfig = {
@@ -194,15 +183,6 @@ async function openCharacterSelectorModal(node, tagsWidget) {
         }
     });
     let favoriteSet = new Set(favoriteItems.filter(fi => !fi.isCustom).map(fi => fi.name));
-
-    // 匹配已经勾选的自定义项
-    favoriteItems.forEach(fi => {
-        const customKeys = splitPromptTokens(fi.customContent).map(normalizePromptToken);
-        const matchesCustom = customKeys.length > 0 && customKeys.every(key => currentTokenSet.has(key));
-        if (fi.isCustom && fi.customContent && (matchesCustom || normalizedCurrentTagsText.includes(fi.customContent.trim()))) {
-            selectedCharacters.add(fi.name);
-        }
-    });
 
     // 记忆排序、页数、侧边栏分类和滚动位置配置
     const SORT_STORAGE_KEY = "anima-char-selector-active-sort";
@@ -764,6 +744,59 @@ async function openCharacterSelectorModal(node, tagsWidget) {
         return request;
     }
 
+    function showCharacterTagToast(message) {
+        const toast = document.createElement("div");
+        toast.style.cssText = `
+            position: fixed !important;
+            bottom: 30px !important;
+            right: 30px !important;
+            background: rgba(16, 16, 24, 0.92) !important;
+            border: 1px solid rgba(219, 39, 119, 0.45) !important;
+            color: #ffffff !important;
+            padding: 10px 20px !important;
+            border-radius: 12px !important;
+            font-size: 13px !important;
+            z-index: 100000 !important;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.6) !important;
+            backdrop-filter: blur(10px) !important;
+            -webkit-backdrop-filter: blur(10px) !important;
+            pointer-events: none !important;
+            animation: animaFadeIn 0.2s ease forwards !important;
+        `;
+        toast.innerText = message;
+        document.body.appendChild(toast);
+        setTimeout(() => {
+            toast.style.transition = "opacity 0.3s ease";
+            toast.style.opacity = "0";
+            setTimeout(() => toast.remove(), 300);
+        }, 1500);
+    }
+
+    function fallbackCopyCharacterText(text, callback) {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.opacity = "0";
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand("copy");
+            callback?.();
+        } catch (err) {
+            console.error("Fallback copy failed", err);
+        }
+        textArea.remove();
+    }
+
+    function copyCharacterText(text, callback) {
+        if (!text) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(() => callback?.()).catch(() => fallbackCopyCharacterText(text, callback));
+        } else {
+            fallbackCopyCharacterText(text, callback);
+        }
+    }
+
     function createCharacterTagsOverlay(item) {
         const overlay = document.createElement("div");
         overlay.className = "anima-character-card-tags";
@@ -781,10 +814,31 @@ async function openCharacterSelectorModal(node, tagsWidget) {
         const explicitTags = getExplicitCharacterTags(item);
         const tags = explicitTags.length > 0 || state === "error" ? getCharacterTags(item) : [];
 
+        const renderHeader = (labelText, copyTags = []) => {
+            headerEl.innerHTML = "";
+            headerEl.onclick = null;
+
+            const label = document.createElement("span");
+            label.className = "anima-character-card-tags-label";
+            label.innerText = labelText;
+            headerEl.appendChild(label);
+
+            if (copyTags.length > 0) {
+                const copy = document.createElement("span");
+                copy.className = "anima-character-card-tags-copy";
+                copy.innerText = t("Copy");
+                headerEl.appendChild(copy);
+                headerEl.onclick = (event) => {
+                    event.stopPropagation();
+                    copyCharacterText(`${copyTags.join(", ")}, `, () => showCharacterTagToast(t("Copied Successfully")));
+                };
+            }
+        };
+
         chipsEl.innerHTML = "";
 
         if (state === "loading" && explicitTags.length === 0) {
-            headerEl.innerText = t("Loading official tags...");
+            renderHeader(t("Loading official tags..."));
             const empty = document.createElement("span");
             empty.className = "anima-character-card-tags-empty";
             empty.innerText = t("Loading official tags...");
@@ -792,15 +846,20 @@ async function openCharacterSelectorModal(node, tagsWidget) {
             return;
         }
 
-        headerEl.innerText = state === "error" && explicitTags.length === 0
+        const headerText = state === "error" && explicitTags.length === 0
             ? `${t("Official tags unavailable")} · ${tags.length}`
             : `${t("Tags")} · ${tags.length}`;
+        renderHeader(headerText, tags);
         if (tags.length > 0) {
             tags.forEach(tagText => {
                 const chip = document.createElement("span");
                 chip.className = "anima-character-card-tag-chip";
                 chip.innerText = tagText;
                 chip.title = tagText;
+                chip.onclick = (event) => {
+                    event.stopPropagation();
+                    copyCharacterText(tagText, () => showCharacterTagToast(t("Copied: {text}", { text: tagText })));
+                };
                 chipsEl.appendChild(chip);
             });
         } else {
@@ -902,8 +961,13 @@ async function openCharacterSelectorModal(node, tagsWidget) {
         closeBtn.style.transform = "rotate(0deg)";
     };
 
+    const headerActions = document.createElement("div");
+    headerActions.style.cssText = "display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex: 0 0 auto;";
+    headerActions.appendChild(createPromoLinks({ accentColor: "#db2777" }));
+    headerActions.appendChild(closeBtn);
+
     header.appendChild(titleContainer);
-    header.appendChild(closeBtn);
+    header.appendChild(headerActions);
     modalContainer.appendChild(header);
 
     // 5. 注入动画样式及极致 UI 美化样式
@@ -931,7 +995,7 @@ async function openCharacterSelectorModal(node, tagsWidget) {
             background-size: 200% 100% !important;
             animation: animaShimmer 1.5s infinite linear !important;
             z-index: 2 !important;
-            border-radius: 20px !important;
+            border-radius: 0 !important;
             pointer-events: none !important;
         }
         @keyframes animaSpin {
@@ -1039,25 +1103,104 @@ async function openCharacterSelectorModal(node, tagsWidget) {
         }
         
         /* 分页器按钮样式 */
+        .anima-pagination {
+            padding: 14px 24px;
+            background: linear-gradient(180deg, rgba(18,18,24,0.2), rgba(18,18,24,0.62));
+            border-top: 1px solid rgba(255,255,255,0.06);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            flex-wrap: wrap;
+            box-shadow: 0 -12px 32px rgba(0,0,0,0.18);
+        }
+        .anima-pagination-stats {
+            min-height: 36px;
+            padding: 0 14px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.045);
+            border: 1px solid rgba(255,255,255,0.07);
+            color: #d4d4d8;
+            font-size: 12.5px;
+            font-weight: 750;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+            max-width: min(460px, 100%);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+        }
+        .anima-pagination-stats::before {
+            content: "";
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #db2777;
+            box-shadow: 0 0 14px rgba(219,39,119,0.72);
+            flex: 0 0 auto;
+        }
+        .anima-pagination-controls {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-left: auto;
+        }
+        .anima-page-number {
+            min-height: 36px;
+            padding: 0;
+            border-radius: 0;
+            background: transparent;
+            border: none;
+            color: #d1d5db;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            box-shadow: none;
+        }
         .anima-page-btn {
-            padding: 7px 14px;
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            border-radius: 10px;
-            color: #a1a1aa;
-            font-size: 13px;
-            font-weight: 600;
+            min-height: 36px;
+            padding: 0 13px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 999px;
+            color: #d4d4d8;
+            font-size: 12.5px;
+            font-weight: 750;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
         }
         .anima-page-btn:hover:not(:disabled) {
-            background: rgba(255, 255, 255, 0.08);
+            background: rgba(219,39,119,0.16);
             color: white;
-            border-color: rgba(255, 255, 255, 0.12);
+            border-color: rgba(219,39,119,0.38);
+            transform: translateY(-1px);
         }
         .anima-page-btn:disabled {
-            opacity: 0.25;
+            opacity: 0.35;
             cursor: not-allowed;
+        }
+        .anima-page-input {
+            width: 48px;
+            padding: 6px 4px;
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid rgba(255,255,255,0.16);
+            border-radius: 0;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 800;
+            text-align: center;
+            outline: none;
+            transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+        }
+        .anima-page-input:focus {
+            background: transparent;
+            border-bottom-color: rgba(219,39,119,0.72);
+            box-shadow: none;
         }
         
         /* 折叠过渡动画样式 */
@@ -1080,54 +1223,174 @@ async function openCharacterSelectorModal(node, tagsWidget) {
         .sidebar-section-arrow.collapsed {
             transform: rotate(-90deg);
         }
+        .anima-character-card {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            min-width: 0;
+            overflow: hidden;
+            box-sizing: border-box;
+            border-radius: 16px;
+            isolation: isolate;
+            background: rgba(255,255,255,0.06);
+            border: 2px solid rgba(255,255,255,0.06);
+            box-shadow: 0 5px 18px rgba(0,0,0,0.25);
+            cursor: pointer;
+            transition: border-color 0.18s ease, box-shadow 0.18s ease;
+        }
+        .anima-character-card:hover {
+            border-color: rgba(219,39,119,0.82);
+            box-shadow: 0 12px 30px rgba(0,0,0,0.38), 0 0 18px rgba(219,39,119,0.14);
+        }
+        .anima-character-card.selected {
+            border-color: #db2777;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.36), 0 0 24px rgba(219,39,119,0.24);
+        }
+        .anima-character-card-clip {
+            position: absolute;
+            inset: 2px;
+            z-index: 0;
+            overflow: hidden;
+            border-radius: 13px;
+            clip-path: inset(0 round 13px);
+            background: #0a0a10;
+        }
+        .anima-character-card-info {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 4;
+            padding: 13px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            min-width: 0;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+        }
+        .anima-character-card:hover .anima-character-card-info { opacity: 0; }
+        .anima-character-card-title {
+            color: #fff;
+            font-size: 13.5px;
+            font-weight: 850;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.72);
+        }
+        .anima-character-card-sub {
+            color: #cbd5e1;
+            font-size: 10.5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            opacity: 0.9;
+        }
+        .anima-character-card-badges {
+            display: flex;
+            gap: 5px;
+            min-width: 0;
+            overflow: hidden;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .anima-character-badge {
+            color: #f9a8d4;
+            background: rgba(219,39,119,0.16);
+            border: 1px solid rgba(219,39,119,0.24);
+            border-radius: 999px;
+            padding: 2px 7px;
+            font-size: 10px;
+            font-weight: 750;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
         .anima-character-card-tags {
             position: absolute;
             inset: 0;
             z-index: 5;
-            padding: 42px 12px 72px;
+            padding: 42px 12px 14px;
+            box-sizing: border-box;
+            opacity: 0;
+            pointer-events: none;
+            background: rgba(7, 7, 14, 0.76);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            transition: opacity 0.2s ease;
             display: flex;
             flex-direction: column;
-            gap: 6px;
-            background: linear-gradient(to bottom, rgba(8, 8, 12, 0.94) 0%, rgba(13, 13, 19, 0.84) 56%, rgba(13, 13, 19, 0.14) 100%);
-            opacity: 0;
-            transform: translateY(8px);
-            pointer-events: none;
-            transition: opacity 0.14s ease, transform 0.14s ease;
-            box-sizing: border-box;
+            gap: 10px;
+            overflow: hidden;
         }
         .anima-character-card-tags.is-visible {
             opacity: 1;
-            transform: translateY(0);
+            pointer-events: auto;
         }
         .anima-character-card-tags-header {
+            border: 1px solid rgba(219,39,119,0.32);
+            background: rgba(219,39,119,0.16);
+            color: #fce7f3;
+            border-radius: 999px;
+            padding: 6px 9px;
+            font-size: 11px;
+            font-weight: 850;
+            line-height: 1.2;
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            cursor: pointer;
+        }
+        .anima-character-card-tags-label {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+        }
+        .anima-character-card-tags-copy {
             color: #f9a8d4;
-            font-size: 10px;
-            font-weight: 800;
-            letter-spacing: 0;
-            text-transform: uppercase;
-            line-height: 1.3;
-            margin-bottom: 2px;
+            font-size: 10.5px;
+            font-weight: 850;
+            flex: 0 0 auto;
         }
         .anima-character-card-tags-chips {
             display: flex;
             flex-wrap: wrap;
             gap: 5px;
-            overflow: hidden;
+            align-content: flex-start;
+            overflow-y: auto;
+            min-height: 0;
+            padding-right: 2px;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
         }
+        .anima-character-card-tags-chips::-webkit-scrollbar { display: none; }
         .anima-character-card-tag-chip {
             max-width: 100%;
-            color: #f3f4f6;
-            background: rgba(244, 114, 182, 0.14);
-            border: 1px solid rgba(244, 114, 182, 0.24);
-            border-radius: 7px;
-            padding: 2px 6px;
-            font-size: 10px;
+            color: #e5e7eb;
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 999px;
+            padding: 5px 8px;
+            font-size: 11.5px;
             font-weight: 650;
-            line-height: 1.25;
+            line-height: 1.15;
+            cursor: pointer;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
             box-sizing: border-box;
+        }
+        .anima-character-card-tag-chip:hover {
+            border-color: rgba(219,39,119,0.45);
+            color: #fff;
+            background: rgba(219,39,119,0.22);
         }
         .anima-character-card-tags-empty {
             color: #a1a1aa;
@@ -1435,7 +1698,8 @@ async function openCharacterSelectorModal(node, tagsWidget) {
         overflow-y: auto;
         padding: 24px 28px;
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        grid-auto-rows: 340px;
         gap: 20px;
         align-content: start;
     `;
@@ -1462,14 +1726,13 @@ async function openCharacterSelectorModal(node, tagsWidget) {
     // 分页控制栏 (Pagination Bar - 嵌入在网格区底部)
     const paginationBar = document.createElement("div");
     paginationBar.className = "anima-pagination";
-    paginationBar.style.cssText += " background: rgba(18, 18, 24, 0.35);";
     
     const pageStats = document.createElement("div");
-    pageStats.style.cssText = "font-size: 13px; color: #9ca3af; font-weight: 500;";
+    pageStats.className = "anima-pagination-stats";
     pageStats.innerText = t("Total {total} characters | Showing {start}-{end}", { total: 0, start: 0, end: 0 });
 
     const pageControls = document.createElement("div");
-    pageControls.style.cssText = "display: flex; gap: 8px; align-items: center;";
+    pageControls.className = "anima-pagination-controls";
 
     const firstPageBtn = document.createElement("button");
     firstPageBtn.className = "anima-page-btn";
@@ -1482,21 +1745,10 @@ async function openCharacterSelectorModal(node, tagsWidget) {
     prevPageBtn.onclick = () => goToPage(currentPage - 1);
 
     const pageNumContainer = document.createElement("div");
-    pageNumContainer.style.cssText = "font-size: 13px; color: #d1d5db; display: flex; align-items: center; gap: 6px;";
+    pageNumContainer.className = "anima-page-number";
     
     const pageInput = document.createElement("input");
     pageInput.className = "anima-page-input";
-    pageInput.style.cssText = `
-        width: 48px;
-        padding: 6px 8px;
-        background: rgba(10, 10, 15, 0.8);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 8px;
-        color: white;
-        font-size: 13px;
-        text-align: center;
-        outline: none;
-    `;
     pageInput.type = "text";
     pageInput.value = "1";
     pageInput.onkeydown = (e) => {
@@ -2141,47 +2393,51 @@ async function openCharacterSelectorModal(node, tagsWidget) {
         const query = searchInput.value.toLowerCase().trim();
         const sortVal = sortSelect.value;
 
-        // A. 联合多维分类过滤
-        let items = window.characterData || [];
-        const isGroup = activeFilters.type === "default" || activeFilters.type.startsWith("group_");
-        
-        if (isGroup) {
-            const groupItemNames = new Set(
-                favoriteItems.filter(fi => !fi.isCustom && fi.groupIds && fi.groupIds.includes(activeFilters.type)).map(fi => fi.name)
-            );
-            items = items.filter(item => groupItemNames.has(item.name));
-            
-            const customItems = favoriteItems.filter(fi => fi.isCustom && fi.groupIds && fi.groupIds.includes(activeFilters.type));
-            items = [...customItems, ...items];
-        }
-
-        if (activeFilters.gender) {
-            const val = activeFilters.gender;
-            items = items.filter(item => item.gender === val);
-        }
-        if (activeFilters.hair) {
-            const val = activeFilters.hair;
-            items = items.filter(item => item.hair === val);
-        }
-        if (activeFilters.eye) {
-            const val = activeFilters.eye;
-            items = items.filter(item => item.eye === val);
-        }
-        if (activeFilters.series) {
-            items = items.filter(item => item.copyright === activeFilters.series);
-        }
-
-        // B. 搜索关键词过滤
-        if (query) {
-            items = items.filter(item => {
-                const name = item.isCustom ? (item.nickname || item.name) : item.name;
-                const copyright = item.isCustom ? "" : (item.copyright || "");
-                return (name && name.toLowerCase().includes(query)) || 
-                       (copyright && copyright.toLowerCase().includes(query));
-            });
-        }
+        // A. 联合多维分类过滤；“已选择”视图直接使用全量已选，不与当前筛选条件取交集
+        let items = [];
         if (showSelectedOnly) {
-            items = items.filter(item => selectedCharacters.has(item.name));
+            const customItems = favoriteItems.filter(fi => fi.isCustom && selectedCharacters.has(fi.name));
+            const normalItems = (window.characterData || []).filter(item => selectedCharacters.has(item.name));
+            items = [...customItems, ...normalItems];
+        } else {
+            items = window.characterData || [];
+            const isGroup = activeFilters.type === "default" || activeFilters.type.startsWith("group_");
+            
+            if (isGroup) {
+                const groupItemNames = new Set(
+                    favoriteItems.filter(fi => !fi.isCustom && fi.groupIds && fi.groupIds.includes(activeFilters.type)).map(fi => fi.name)
+                );
+                items = items.filter(item => groupItemNames.has(item.name));
+                
+                const customItems = favoriteItems.filter(fi => fi.isCustom && fi.groupIds && fi.groupIds.includes(activeFilters.type));
+                items = [...customItems, ...items];
+            }
+
+            if (activeFilters.gender) {
+                const val = activeFilters.gender;
+                items = items.filter(item => item.gender === val);
+            }
+            if (activeFilters.hair) {
+                const val = activeFilters.hair;
+                items = items.filter(item => item.hair === val);
+            }
+            if (activeFilters.eye) {
+                const val = activeFilters.eye;
+                items = items.filter(item => item.eye === val);
+            }
+            if (activeFilters.series) {
+                items = items.filter(item => item.copyright === activeFilters.series);
+            }
+
+            // B. 搜索关键词过滤
+            if (query) {
+                items = items.filter(item => {
+                    const name = item.isCustom ? (item.nickname || item.name) : item.name;
+                    const copyright = item.isCustom ? "" : (item.copyright || "");
+                    return (name && name.toLowerCase().includes(query)) || 
+                           (copyright && copyright.toLowerCase().includes(query));
+                });
+            }
         }
 
         // C. 排序数据 (自定义项目置顶)
@@ -2293,7 +2549,7 @@ async function openCharacterSelectorModal(node, tagsWidget) {
         hideCharacterTagsTooltip();
         listContainer.innerHTML = "";
         
-        const isCustomGroup = activeFilters.type !== "all" && activeFilters.type !== "default";
+        const isCustomGroup = !showSelectedOnly && activeFilters.type !== "all" && activeFilters.type !== "default";
         
         if (filteredData.length === 0 && !isCustomGroup) {
             const noResult = document.createElement("div");
@@ -2312,15 +2568,15 @@ async function openCharacterSelectorModal(node, tagsWidget) {
             createCard.style.cssText = `
                 background: rgba(22, 22, 32, 0.4) !important;
                 border: 2px dashed rgba(219, 39, 119, 0.4) !important;
-                border-radius: 20px !important;
+                border-radius: 16px !important;
                 overflow: hidden !important;
                 display: flex !important;
                 flex-direction: column !important;
                 align-items: center !important;
                 justify-content: center !important;
                 width: 100% !important;
-                height: 0 !important;
-                padding-bottom: 133.33% !important; 
+                height: 100% !important;
+                min-height: 0 !important;
                 cursor: pointer !important;
                 transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important; 
                 position: relative !important;
@@ -2394,26 +2650,20 @@ async function openCharacterSelectorModal(node, tagsWidget) {
             const isFavorite = item.isCustom ? true : favoriteSet.has(item.name);
             
             const card = document.createElement("div");
+            card.className = `anima-character-card${isSelected ? " selected" : ""}`;
             card.dataset.name = item.name;
             
             card.style.cssText = `
-                background: rgba(22, 22, 32, 0.7) !important;
-                border: ${isSelected ? '2.5px solid #db2777' : '2.5px solid rgba(255, 255, 255, 0.04)'} !important;
-                border-radius: 20px !important;
-                overflow: hidden !important;
-                display: block !important;
                 width: 100% !important;
-                height: 0 !important;
-                padding-bottom: 133.33% !important; 
-                cursor: pointer !important;
-                transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important; 
-                position: relative !important;
+                height: 100% !important;
                 user-select: none !important;
-                box-sizing: border-box !important;
-                box-shadow: ${isSelected ? '0 10px 25px rgba(219, 39, 119, 0.35)' : '0 4px 12px rgba(0,0,0,0.15)'} !important;
             `;
+            const cardClip = document.createElement("div");
+            cardClip.className = "anima-character-card-clip";
+            card.appendChild(cardClip);
+
             const tagsOverlay = createCharacterTagsOverlay(item);
-            card.appendChild(tagsOverlay);
+            cardClip.appendChild(tagsOverlay);
             card.addEventListener("mouseenter", async () => {
                 hideCharacterTagsTooltip();
                 activeCharacterTagsTooltip = tagsOverlay;
@@ -2685,7 +2935,7 @@ async function openCharacterSelectorModal(node, tagsWidget) {
                     <div style="font-size: 48px; margin-bottom: 8px;">📄</div>
                     <div style="font-size: 11px; font-weight: 700; color: #db2777; background: rgba(219, 39, 119, 0.15); border: 1px solid rgba(219, 39, 119, 0.3); padding: 2px 8px; border-radius: 20px; text-transform: uppercase;">Custom</div>
                 `;
-                card.appendChild(placeholder);
+                cardClip.appendChild(placeholder);
             } else {
                 placeholder.style.cssText = `
                     position: absolute;
@@ -2707,7 +2957,7 @@ async function openCharacterSelectorModal(node, tagsWidget) {
                 initialLetter.innerText = item.name ? item.name.charAt(0).toUpperCase() : '?';
                 initialLetter.style.cssText = "font-size: 56px; font-weight: 900; color: rgba(255,255,255,0.7); text-shadow: 0 4px 12px rgba(0,0,0,0.3);";
                 placeholder.appendChild(initialLetter);
-                card.appendChild(placeholder);
+                cardClip.appendChild(placeholder);
 
                 img = document.createElement("img");
                 img.style.cssText = `
@@ -2737,7 +2987,7 @@ async function openCharacterSelectorModal(node, tagsWidget) {
                     const spinner = document.createElement("div");
                     spinner.className = "anima-spinner";
                     loader.appendChild(spinner);
-                    card.appendChild(loader);
+                    cardClip.appendChild(loader);
                 }
                 
                 img.onload = () => {
@@ -2750,73 +3000,54 @@ async function openCharacterSelectorModal(node, tagsWidget) {
                     loader?.remove();
                     placeholder.style.opacity = "1";
                 };
-                card.appendChild(img);
+                cardClip.appendChild(img);
                 charImageObserver.observe(img);
             }
 
             const mask = document.createElement("div");
             mask.style.cssText = `
                 position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: linear-gradient(to top, rgba(14, 14, 18, 0.98) 0%, rgba(14, 14, 18, 0.55) 45%, rgba(0, 0, 0, 0) 100%);
+                inset: 0;
+                background: linear-gradient(to top, rgba(10,10,16,0.99) 0%, rgba(10,10,16,0.72) 42%, rgba(10,10,16,0.16) 100%);
                 z-index: 3;
+                pointer-events: none;
             `;
-            card.appendChild(mask);
+            cardClip.appendChild(mask);
 
             const infoPanel = document.createElement("div");
-            infoPanel.style.cssText = `
-                position: absolute;
-                bottom: 0;
-                left: 0;
-                width: 100%;
-                padding: 16px 14px;
-                box-sizing: border-box;
-                z-index: 4;
-                display: flex;
-                flex-direction: column;
-                gap: 5px;
-            `;
+            infoPanel.className = "anima-character-card-info";
 
             const nameEl = document.createElement("div");
-            nameEl.style.cssText = "font-size: 14px; font-weight: 800; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 2px 4px rgba(0,0,0,0.6);";
+            nameEl.className = "anima-character-card-title";
             
             const favInfo = item.isCustom ? item : favoriteMap.get(item.name);
             const nickname = favInfo ? favInfo.nickname : "";
+            let noteEl = null;
 
             if (item.isCustom) {
                 nameEl.innerText = item.nickname || item.name;
             } else {
                 const nameFormatted = item.name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
                 if (nickname) {
-                    nameEl.innerHTML = `${nameFormatted} <span style="font-size:11px;color:#f472b6;font-weight:normal;display:block;margin-top:2px;overflow:hidden;text-overflow:ellipsis;">✏️ ${nickname}</span>`;
+                    nameEl.innerText = nameFormatted;
+                    noteEl = document.createElement("div");
+                    noteEl.className = "anima-character-card-sub";
+                    noteEl.style.color = "#f9a8d4";
+                    noteEl.innerText = nickname;
                 } else {
                     nameEl.innerText = nameFormatted;
                 }
             }
             
             const copyrightContainer = document.createElement("div");
-            copyrightContainer.style.cssText = "display: flex; align-items: center; justify-content: space-between; width: 100%; overflow: hidden; gap: 8px;";
+            copyrightContainer.className = "anima-character-card-badges";
             
             if (!item.isCustom) {
                 const copyEl = document.createElement("span");
+                copyEl.className = "anima-character-badge";
                 copyEl.innerText = item.copyright || "";
                 copyEl.title = item.copyright || "";
-                copyEl.style.cssText = `
-                    font-size: 10.5px;
-                    color: #e2e8f0;
-                    background: rgba(219, 39, 119, 0.15);
-                    border: 1px solid rgba(219, 39, 119, 0.25);
-                    padding: 2px 8px;
-                    border-radius: 20px;
-                    white-space: nowrap;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    max-width: 110px;
-                    font-weight: 600;
-                `;
+                copyEl.style.maxWidth = "150px";
                 copyrightContainer.appendChild(copyEl);
             }
 
@@ -2839,21 +3070,20 @@ async function openCharacterSelectorModal(node, tagsWidget) {
             copyrightContainer.appendChild(numEl);
 
             infoPanel.appendChild(nameEl);
+            if (noteEl) infoPanel.appendChild(noteEl);
             infoPanel.appendChild(copyrightContainer);
-            card.appendChild(infoPanel);
+            cardClip.appendChild(infoPanel);
 
             card.onclick = () => {
                 if (selectedCharacters.has(item.name)) {
                     selectedCharacters.delete(item.name);
-                    card.style.borderColor = "rgba(255, 255, 255, 0.04)";
-                    card.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
+                    card.classList.remove("selected");
                     checkbox.style.background = "rgba(10, 10, 15, 0.5)";
                     checkbox.style.borderColor = "rgba(255, 255, 255, 0.35)";
                     checkbox.innerHTML = "";
                 } else {
                     selectedCharacters.add(item.name);
-                    card.style.borderColor = "#db2777";
-                    card.style.boxShadow = "0 10px 25px rgba(219, 39, 119, 0.35)";
+                    card.classList.add("selected");
                     checkbox.style.background = "#db2777";
                     checkbox.style.borderColor = "#db2777";
                     checkbox.innerHTML = `

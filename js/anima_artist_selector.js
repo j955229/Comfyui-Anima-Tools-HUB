@@ -1,6 +1,7 @@
 import { app } from "../../scripts/app.js";
 import { t } from "./i18n.js";
 import { markImageLoaded, isImageLoaded } from "./anima_image_utils.js";
+import { createPromoLinks } from "./anima_promo_links.js";
 
 app.registerExtension({
     name: "AnimaArtistTagSelector.extension",
@@ -49,17 +50,23 @@ app.registerExtension({
 async function openArtistSelectorModal(node, tagsWidget) {
     // 1. 解析当前节点中已经选中的 tags，兼容 @ 前缀和 by 前缀
     const currentTagsText = tagsWidget.value || "";
+    const cleanArtistToken = (value) => {
+        let clean = String(value || "").trim();
+        if (clean.startsWith("@")) {
+            clean = clean.substring(1).trim();
+        } else if (clean.toLowerCase().startsWith("by ")) {
+            clean = clean.substring(3).trim();
+        }
+        return clean;
+    };
+    const currentTokenSet = new Set(
+        currentTagsText.split(",")
+            .map(token => cleanArtistToken(token).toLowerCase())
+            .filter(Boolean)
+    );
     const selectedArtists = new Set(
         currentTagsText.split(",")
-            .map(t => {
-                let clean = t.trim();
-                if (clean.startsWith("@")) {
-                    clean = clean.substring(1).trim();
-                } else if (clean.toLowerCase().startsWith("by ")) {
-                    clean = clean.substring(3).trim();
-                }
-                return clean;
-            })
+            .map(cleanArtistToken)
             .filter(t => t.length > 0)
     );
 
@@ -91,7 +98,12 @@ async function openArtistSelectorModal(node, tagsWidget) {
 
     // 匹配已经勾选的自定义项
     favoriteItems.forEach(fi => {
-        if (fi.isCustom && fi.customContent && currentTagsText.includes(fi.customContent.trim())) {
+        const customKeys = String(fi.customContent || "")
+            .split(",")
+            .map(token => cleanArtistToken(token).toLowerCase())
+            .filter(Boolean);
+        const isBareNumericCustom = customKeys.length === 1 && /^\d+$/.test(customKeys[0]);
+        if (fi.isCustom && fi.customContent && customKeys.length > 0 && customKeys.every(key => currentTokenSet.has(key)) && !isBareNumericCustom) {
             selectedArtists.add(fi.name);
         }
     });
@@ -616,7 +628,7 @@ async function openArtistSelectorModal(node, tagsWidget) {
             background-size: 200% 100% !important;
             animation: animaShimmer 1.5s infinite linear !important;
             z-index: 2 !important;
-            border-radius: 14px !important;
+            border-radius: 0 !important;
             pointer-events: none !important;
         }
         @keyframes animaSpin {
@@ -702,48 +714,103 @@ async function openArtistSelectorModal(node, tagsWidget) {
         }
         /* Pagination Bar */
         .anima-pagination {
-            padding: 12px 24px;
-            background: rgba(20, 20, 30, 0.35);
-            border-top: 1px solid rgba(255, 255, 255, 0.04);
+            padding: 14px 24px;
+            background: linear-gradient(180deg, rgba(18,18,24,0.2), rgba(18,18,24,0.62));
+            border-top: 1px solid rgba(255,255,255,0.06);
             display: flex;
             align-items: center;
             justify-content: space-between;
+            gap: 14px;
             flex-wrap: wrap;
-            gap: 12px;
+            box-shadow: 0 -12px 32px rgba(0,0,0,0.18);
+        }
+        .anima-pagination-stats {
+            min-height: 36px;
+            padding: 0 14px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.045);
+            border: 1px solid rgba(255,255,255,0.07);
+            color: #d4d4d8;
+            font-size: 12.5px;
+            font-weight: 750;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+            max-width: min(460px, 100%);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+        }
+        .anima-pagination-stats::before {
+            content: "";
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #0b8ce9;
+            box-shadow: 0 0 14px rgba(11,140,233,0.72);
+            flex: 0 0 auto;
+        }
+        .anima-pagination-controls {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-left: auto;
+        }
+        .anima-page-number {
+            min-height: 36px;
+            padding: 0;
+            border-radius: 0;
+            background: transparent;
+            border: none;
+            color: #d1d5db;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            box-shadow: none;
         }
         .anima-page-btn {
-            padding: 7px 14px;
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            border-radius: 10px;
-            color: #a1a1aa;
-            font-size: 13px;
-            font-weight: 600;
+            min-height: 36px;
+            padding: 0 13px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 999px;
+            color: #d4d4d8;
+            font-size: 12.5px;
+            font-weight: 750;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
         }
         .anima-page-btn:hover:not(:disabled) {
-            background: rgba(255, 255, 255, 0.08);
+            background: rgba(11,140,233,0.16);
             color: white;
-            border-color: rgba(255, 255, 255, 0.12);
+            border-color: rgba(11,140,233,0.38);
+            transform: translateY(-1px);
         }
         .anima-page-btn:disabled {
-            opacity: 0.25;
+            opacity: 0.35;
             cursor: not-allowed;
         }
         .anima-page-input {
             width: 48px;
-            padding: 6px 8px;
-            background: rgba(10, 10, 15, 0.8);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
+            padding: 6px 4px;
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid rgba(255,255,255,0.16);
+            border-radius: 0;
             color: white;
             font-size: 13px;
+            font-weight: 800;
             text-align: center;
             outline: none;
+            transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
         }
         .anima-page-input:focus {
-            border-color: #0b8ce9;
+            background: transparent;
+            border-bottom-color: rgba(11,140,233,0.72);
+            box-shadow: none;
         }
 
         /* 侧边栏按钮高级样式 */
@@ -771,6 +838,15 @@ async function openArtistSelectorModal(node, tagsWidget) {
             border-color: rgba(11, 140, 233, 0.3) !important;
             color: #7dd3fc !important;
             font-weight: 700 !important;
+        }
+        .anima-artist-card-clip {
+            position: absolute;
+            inset: 2.5px;
+            z-index: 0;
+            overflow: hidden;
+            border-radius: 17px;
+            clip-path: inset(0 round 17px);
+            background: #0a0a10;
         }
     `;
     document.head.appendChild(styleSheet);
@@ -822,8 +898,13 @@ async function openArtistSelectorModal(node, tagsWidget) {
         closeBtn.style.transform = "rotate(0deg)";
     };
 
+    const headerActions = document.createElement("div");
+    headerActions.style.cssText = "display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex: 0 0 auto;";
+    headerActions.appendChild(createPromoLinks({ accentColor: "#0b8ce9" }));
+    headerActions.appendChild(closeBtn);
+
     header.appendChild(titleContainer);
-    header.appendChild(closeBtn);
+    header.appendChild(headerActions);
     modalContainer.appendChild(header);
 
     // 4. 构建 Toolbar / 控制区
@@ -1137,14 +1218,13 @@ async function openArtistSelectorModal(node, tagsWidget) {
     // 6. 构建分页控制栏 (Pagination Bar - 嵌入在网格区底部)
     const paginationBar = document.createElement("div");
     paginationBar.className = "anima-pagination";
-    paginationBar.style.cssText += " background: rgba(18, 18, 24, 0.35);";
     
     const pageStats = document.createElement("div");
-    pageStats.style.cssText = "font-size: 13px; color: #9ca3af; font-weight: 500;";
+    pageStats.className = "anima-pagination-stats";
     pageStats.innerText = t("Total {total} artists | Showing {start}-{end}", { total: 0, start: 0, end: 0 });
 
     const pageControls = document.createElement("div");
-    pageControls.style.cssText = "display: flex; gap: 8px; align-items: center;";
+    pageControls.className = "anima-pagination-controls";
 
     const firstPageBtn = document.createElement("button");
     firstPageBtn.className = "anima-page-btn";
@@ -1157,21 +1237,10 @@ async function openArtistSelectorModal(node, tagsWidget) {
     prevPageBtn.onclick = () => goToPage(currentPage - 1);
 
     const pageNumContainer = document.createElement("div");
-    pageNumContainer.style.cssText = "font-size: 13px; color: #d1d5db; display: flex; align-items: center; gap: 6px;";
+    pageNumContainer.className = "anima-page-number";
     
     const pageInput = document.createElement("input");
     pageInput.className = "anima-page-input";
-    pageInput.style.cssText = `
-        width: 48px;
-        padding: 6px 8px;
-        background: rgba(10, 10, 15, 0.8);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 8px;
-        color: white;
-        font-size: 13px;
-        text-align: center;
-        outline: none;
-    `;
     pageInput.type = "text";
     pageInput.value = "1";
     pageInput.onkeydown = (e) => {
@@ -1483,29 +1552,33 @@ async function openArtistSelectorModal(node, tagsWidget) {
         const query = searchInput.value.toLowerCase().trim();
         const sortVal = sortSelect.value;
 
-        // A. 基础分类过滤
-        let items = window.galleryData || [];
-        const isGroup = activeCategory === "default" || activeCategory.startsWith("group_");
-        
-        if (isGroup) {
-            const groupItemNames = new Set(
-                favoriteItems.filter(fi => !fi.isCustom && fi.groupIds && fi.groupIds.includes(activeCategory)).map(fi => fi.name)
-            );
-            items = items.filter(item => groupItemNames.has(item.name));
-            
-            const customItems = favoriteItems.filter(fi => fi.isCustom && fi.groupIds && fi.groupIds.includes(activeCategory));
-            items = [...customItems, ...items];
-        }
-
-        // B. 搜索关键词过滤
-        if (query) {
-            items = items.filter(item => {
-                const name = item.isCustom ? (item.nickname || item.name) : item.name;
-                return name && name.toLowerCase().includes(query);
-            });
-        }
+        // A. 基础分类过滤；“已选择”视图直接使用全量已选，不与当前筛选条件取交集
+        let items = [];
         if (showSelectedOnly) {
-            items = items.filter(item => selectedArtists.has(item.name));
+            const customItems = favoriteItems.filter(fi => fi.isCustom && selectedArtists.has(fi.name));
+            const normalItems = (window.galleryData || []).filter(item => selectedArtists.has(item.name));
+            items = [...customItems, ...normalItems];
+        } else {
+            items = window.galleryData || [];
+            const isGroup = activeCategory === "default" || activeCategory.startsWith("group_");
+            
+            if (isGroup) {
+                const groupItemNames = new Set(
+                    favoriteItems.filter(fi => !fi.isCustom && fi.groupIds && fi.groupIds.includes(activeCategory)).map(fi => fi.name)
+                );
+                items = items.filter(item => groupItemNames.has(item.name));
+                
+                const customItems = favoriteItems.filter(fi => fi.isCustom && fi.groupIds && fi.groupIds.includes(activeCategory));
+                items = [...customItems, ...items];
+            }
+
+            // B. 搜索关键词过滤
+            if (query) {
+                items = items.filter(item => {
+                    const name = item.isCustom ? (item.nickname || item.name) : item.name;
+                    return name && name.toLowerCase().includes(query);
+                });
+            }
         }
 
         // C. 排序数据 (自定义项目置顶)
@@ -1657,7 +1730,7 @@ async function openArtistSelectorModal(node, tagsWidget) {
     function renderCurrentPage() {
         listContainer.innerHTML = "";
         
-        const isCustomGroup = activeCategory !== "all" && activeCategory !== "default";
+        const isCustomGroup = !showSelectedOnly && activeCategory !== "all" && activeCategory !== "default";
         
         if (filteredData.length === 0 && !isCustomGroup) {
             const noResult = document.createElement("div");
@@ -1774,8 +1847,12 @@ async function openArtistSelectorModal(node, tagsWidget) {
                 position: relative !important;
                 user-select: none !important;
                 box-sizing: border-box !important;
+                isolation: isolate !important;
                 box-shadow: ${isSelected ? '0 10px 25px rgba(11, 140, 233, 0.35)' : '0 4px 12px rgba(0,0,0,0.15)'} !important;
             `;
+            const cardClip = document.createElement("div");
+            cardClip.className = "anima-artist-card-clip";
+            card.appendChild(cardClip);
             
             // Checkbox overlay (放在左上角)
             const checkbox = document.createElement("div");
@@ -2037,7 +2114,7 @@ async function openArtistSelectorModal(node, tagsWidget) {
                     <div style="font-size: 48px; margin-bottom: 8px;">📄</div>
                     <div style="font-size: 11px; font-weight: 700; color: #38bdf8; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3); padding: 2px 8px; border-radius: 20px; text-transform: uppercase;">Custom</div>
                 `;
-                card.appendChild(placeholder);
+                cardClip.appendChild(placeholder);
             } else {
                 let firstChar = "A";
                 if (item.name) {
@@ -2071,7 +2148,7 @@ async function openArtistSelectorModal(node, tagsWidget) {
                     text-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
                 `;
                 placeholder.innerText = firstChar;
-                card.appendChild(placeholder);
+                cardClip.appendChild(placeholder);
 
                 img = document.createElement("img");
                 img.style.cssText = `
@@ -2103,7 +2180,7 @@ async function openArtistSelectorModal(node, tagsWidget) {
                     const spinner = document.createElement("div");
                     spinner.className = "anima-spinner";
                     loader.appendChild(spinner);
-                    card.appendChild(loader);
+                    cardClip.appendChild(loader);
                 }
                 
                 img.onload = () => {
@@ -2116,7 +2193,7 @@ async function openArtistSelectorModal(node, tagsWidget) {
                     loader?.remove();
                     placeholder.style.opacity = "1"; 
                 };
-                card.appendChild(img);
+                cardClip.appendChild(img);
                 artistImageObserver.observe(img);
             }
 
@@ -2130,7 +2207,7 @@ async function openArtistSelectorModal(node, tagsWidget) {
                 background: linear-gradient(to top, rgba(14, 14, 18, 0.98) 0%, rgba(14, 14, 18, 0.55) 45%, rgba(0, 0, 0, 0) 100%);
                 z-index: 3;
             `;
-            card.appendChild(mask);
+            cardClip.appendChild(mask);
 
             // Info Section
             const infoPanel = document.createElement("div");
@@ -2205,7 +2282,7 @@ async function openArtistSelectorModal(node, tagsWidget) {
             
             infoPanel.appendChild(nameEl);
             infoPanel.appendChild(statsContainer);
-            card.appendChild(infoPanel);
+            cardClip.appendChild(infoPanel);
 
             // 点击卡片选择
             card.onclick = () => {

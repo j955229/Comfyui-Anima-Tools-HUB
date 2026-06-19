@@ -1,6 +1,7 @@
 import { app } from "../../scripts/app.js";
 import { t } from "./i18n.js";
 import { markImageLoaded, isImageLoaded, clearImageLoadedCache } from "./anima_image_utils.js";
+import { createPromoLinks } from "./anima_promo_links.js";
 
 app.registerExtension({
     name: "AnimaMultiLoraLoader.extension",
@@ -64,27 +65,71 @@ app.registerExtension({
     }
 });
 
+function hideWidgetDomElement(element) {
+    if (!element?.style) return;
+    if (element === document.body || element === document.documentElement) return;
+    if (element.querySelector?.("canvas, #graph-canvas, .graph-canvas")) return;
+    element.style.setProperty("display", "none", "important");
+    element.style.setProperty("visibility", "hidden", "important");
+    element.style.setProperty("opacity", "0", "important");
+    element.style.setProperty("pointer-events", "none", "important");
+    element.style.setProperty("position", "absolute", "important");
+    element.style.setProperty("left", "-100000px", "important");
+    element.style.setProperty("top", "-100000px", "important");
+    element.style.setProperty("width", "0px", "important");
+    element.style.setProperty("height", "0px", "important");
+    element.style.setProperty("min-width", "0px", "important");
+    element.style.setProperty("min-height", "0px", "important");
+    element.style.setProperty("max-width", "0px", "important");
+    element.style.setProperty("max-height", "0px", "important");
+    element.style.setProperty("padding", "0px", "important");
+    element.style.setProperty("margin", "0px", "important");
+    element.style.setProperty("border", "0", "important");
+    element.style.setProperty("z-index", "-1", "important");
+    element.setAttribute?.("aria-hidden", "true");
+    try {
+        if ("tabIndex" in element) element.tabIndex = -1;
+    } catch (_) {}
+}
+
+function detachWidgetDom(widget) {
+    const candidates = [
+        widget?.element,
+        widget?.inputEl,
+        widget?.el,
+        widget?.domElement,
+        widget?.container,
+        widget?.root,
+        widget?.element?.parentElement,
+        widget?.inputEl?.parentElement
+    ];
+    candidates.forEach(hideWidgetDomElement);
+}
+
+function safeSetWidgetProperty(widget, key, value) {
+    try {
+        widget[key] = value;
+    } catch (_) {}
+}
+
 // Helper to reliably hide the json list widget
 function hideJsonWidgetFully(node) {
     const jsonWidget = node.widgets?.find(w => w.name === "lora_list_json");
     if (jsonWidget) {
-        jsonWidget.type = "hidden";
-        jsonWidget.draw = () => {};
-        jsonWidget.computeSize = () => [0, -4];
-        if (jsonWidget.el) {
-            jsonWidget.el.style.display = "none";
-            jsonWidget.el.style.height = "0px";
-            jsonWidget.el.style.padding = "0px";
-            jsonWidget.el.style.margin = "0px";
-            jsonWidget.el.style.visibility = "hidden";
-        }
-        if (jsonWidget.inputEl) {
-            jsonWidget.inputEl.style.display = "none";
-            jsonWidget.inputEl.style.height = "0px";
-            jsonWidget.inputEl.style.padding = "0px";
-            jsonWidget.inputEl.style.margin = "0px";
-            jsonWidget.inputEl.style.visibility = "hidden";
-        }
+        safeSetWidgetProperty(jsonWidget, "type", "hidden");
+        safeSetWidgetProperty(jsonWidget, "options", { ...(jsonWidget.options || {}), hidden: true });
+        safeSetWidgetProperty(jsonWidget, "serialize", true);
+        safeSetWidgetProperty(jsonWidget, "disabled", true);
+        safeSetWidgetProperty(jsonWidget, "draw", () => {});
+        safeSetWidgetProperty(jsonWidget, "computeSize", () => [0, 0]);
+        safeSetWidgetProperty(jsonWidget, "mouse", () => false);
+        safeSetWidgetProperty(jsonWidget, "onMouseDown", () => false);
+        safeSetWidgetProperty(jsonWidget, "onMouseMove", () => false);
+        safeSetWidgetProperty(jsonWidget, "onMouseUp", () => false);
+        safeSetWidgetProperty(jsonWidget, "computedHeight", 0);
+        safeSetWidgetProperty(jsonWidget, "y", -100000);
+        safeSetWidgetProperty(jsonWidget, "last_y", -100000);
+        detachWidgetDom(jsonWidget);
     }
 }
 
@@ -181,9 +226,10 @@ function syncLoraWidgets(node, loras) {
                         wName === t("Open LoRA Selector") ||
                         wName === "Open LoRA Selector"
                     ) {
-                        if (w.el && w.el.parentNode) {
-                            w.el.parentNode.removeChild(w.el);
-                        }
+                        detachWidgetDom(w);
+                        if (w.el && w.el.parentNode) w.el.parentNode.removeChild(w.el);
+                        if (w.element && w.element.parentNode) w.element.parentNode.removeChild(w.element);
+                        if (w.inputEl && w.inputEl.parentNode) w.inputEl.parentNode.removeChild(w.inputEl);
                         node.widgets.splice(i, 1);
                     }
                 }
@@ -492,8 +538,10 @@ function getSkeletonHtml(count = 40) {
     for (let i = 0; i < count; i++) {
         html += `
             <div class="anima-lora-card skeleton">
-                <div class="anima-spinner"></div>
-                <div style="position: absolute; bottom: 0; left: 0; width: 100%; height: 70px; background: linear-gradient(to top, rgba(10, 10, 15, 0.95) 0%, rgba(10, 10, 15, 0.6) 60%, rgba(10, 10, 15, 0) 100%); z-index: 5; pointer-events: none;"></div>
+                <div class="anima-lora-card-clip">
+                    <div class="anima-spinner"></div>
+                    <div style="position: absolute; bottom: 0; left: 0; width: 100%; height: 70px; background: linear-gradient(to top, rgba(10, 10, 15, 0.95) 0%, rgba(10, 10, 15, 0.6) 60%, rgba(10, 10, 15, 0) 100%); z-index: 5; pointer-events: none;"></div>
+                </div>
             </div>
         `;
     }
@@ -897,6 +945,75 @@ async function openLoraSelectorModal(node) {
         .anima-btn-secondary:hover {
             background: rgba(255, 255, 255, 0.15);
         }
+        .anima-lora-pagination {
+            padding: 14px 20px;
+            background: linear-gradient(180deg, rgba(18,18,24,0.2), rgba(18,18,24,0.62));
+            border-top: 1px solid rgba(255,255,255,0.06);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            flex-wrap: wrap;
+            flex-shrink: 0;
+            box-shadow: 0 -12px 32px rgba(0,0,0,0.18);
+        }
+        .anima-lora-pagination-stats {
+            min-height: 36px;
+            padding: 0 14px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.045);
+            border: 1px solid rgba(255,255,255,0.07);
+            color: #d4d4d8;
+            font-size: 12.5px;
+            font-weight: 750;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+            max-width: min(520px, 100%);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+        }
+        .anima-lora-pagination-stats::before {
+            content: "";
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #0b8ce9;
+            box-shadow: 0 0 14px rgba(11,140,233,0.72);
+            flex: 0 0 auto;
+        }
+        .anima-lora-pagination-controls {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-left: auto;
+        }
+        .anima-lora-pagination-btn {
+            min-height: 36px;
+            padding: 0 13px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 999px;
+            color: #d4d4d8;
+            font-size: 12.5px;
+            font-weight: 750;
+            cursor: pointer;
+            transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+        }
+        .anima-lora-pagination-btn:hover:not(:disabled) {
+            background: rgba(11,140,233,0.16);
+            color: #fff;
+            border-color: rgba(11,140,233,0.38);
+            transform: translateY(-1px);
+        }
+        .anima-lora-pagination-btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
         .anima-sidebar-btn {
             background: transparent;
             border: none;
@@ -949,15 +1066,16 @@ async function openLoraSelectorModal(node) {
         }
         .anima-lora-card {
             background: #202022;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
+            border: 2px solid rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
             overflow: hidden;
-            display: flex;
-            flex-direction: column;
+            display: block;
             position: relative;
             transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
             height: 280px;
             cursor: pointer;
+            box-sizing: border-box;
+            isolation: isolate;
             contain: layout paint style;
             content-visibility: auto;
             contain-intrinsic-size: 180px 280px;
@@ -971,6 +1089,15 @@ async function openLoraSelectorModal(node) {
             border-color: #0b8ce9;
             box-shadow: 0 0 12px rgba(11, 140, 233, 0.3);
             background: #232327;
+        }
+        .anima-lora-card-clip {
+            position: absolute;
+            inset: 2px;
+            z-index: 0;
+            overflow: hidden;
+            border-radius: 13px;
+            clip-path: inset(0 round 13px);
+            background: #0a0a10;
         }
         .anima-lora-favorite-btn {
             position: absolute;
@@ -1451,6 +1578,7 @@ async function openLoraSelectorModal(node) {
     settingsBtn.title = "Settings / 设置";
     settingsBtn.onclick = () => openSettingsModal();
 
+    actionRow.appendChild(createPromoLinks({ accentColor: "#0b8ce9" }));
     actionRow.appendChild(settingsBtn);
     centerControls.appendChild(searchInput);
     centerControls.appendChild(filterRow);
@@ -1602,24 +1730,17 @@ async function openLoraSelectorModal(node) {
 
     // Center Footer
     const footer = document.createElement("div");
-    footer.style.cssText = `
-        padding: 16px 20px;
-        border-top: 1px solid rgba(255, 255, 255, 0.06);
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        flex-shrink: 0;
-    `;
+    footer.className = "anima-lora-pagination";
 
     const infoText = document.createElement("span");
-    infoText.style.cssText = "font-size: 13px; color: #9ca3af;";
+    infoText.className = "anima-lora-pagination-stats";
     
     const pagButtons = document.createElement("div");
-    pagButtons.style.cssText = "display: flex; gap: 8px;";
+    pagButtons.className = "anima-lora-pagination-controls";
 
     const prevBtn = document.createElement("button");
     prevBtn.innerText = "上一页";
-    prevBtn.className = "anima-btn-secondary";
+    prevBtn.className = "anima-lora-pagination-btn";
     prevBtn.disabled = true;
     prevBtn.onclick = () => {
         restorePreviousPage();
@@ -1627,7 +1748,7 @@ async function openLoraSelectorModal(node) {
 
     const nextBtn = document.createElement("button");
     nextBtn.innerText = t("Next");
-    nextBtn.className = "anima-btn-primary";
+    nextBtn.className = "anima-lora-pagination-btn";
     nextBtn.disabled = true;
     nextBtn.onclick = () => {
         if (cursor) {
@@ -1938,6 +2059,9 @@ async function openLoraSelectorModal(node) {
             if (selectedModel && String(selectedModel.id) === String(model.id)) {
                 card.classList.add("selected");
             }
+            const cardClip = document.createElement("div");
+            cardClip.className = "anima-lora-card-clip";
+            card.appendChild(cardClip);
 
             const versions = model.modelVersions || [];
             const firstVersion = versions[0] || {};
@@ -1947,7 +2071,7 @@ async function openLoraSelectorModal(node) {
 
             // Card Image
             const imgContainer = document.createElement("div");
-            imgContainer.style.cssText = "width: 100%; height: 100%; background: transparent; overflow: hidden; position: relative; flex: 1;";
+            imgContainer.style.cssText = "position: absolute; inset: 0; width: 100%; height: 100%; background: transparent; overflow: hidden;";
             
             let previewUrl = "";
             let isVideo = false;
@@ -2140,8 +2264,8 @@ async function openLoraSelectorModal(node) {
             body.appendChild(author);
             body.appendChild(statRow);
 
-            card.appendChild(imgContainer);
-            card.appendChild(body);
+            imgContainer.appendChild(body);
+            cardClip.appendChild(imgContainer);
             
             // Onclick: Preview Details in right sidebar
             card.onclick = () => {
@@ -2635,9 +2759,12 @@ async function openLoraSelectorModal(node) {
             if (selectedModel && selectedModel.id === filename) {
                 card.classList.add("selected");
             }
+            const cardClip = document.createElement("div");
+            cardClip.className = "anima-lora-card-clip";
+            card.appendChild(cardClip);
 
             const imgContainer = document.createElement("div");
-            imgContainer.style.cssText = "width: 100%; height: 100%; background: transparent; overflow: hidden; position: relative; flex: 1; display: flex; align-items: center; justify-content: center;";
+            imgContainer.style.cssText = "position: absolute; inset: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; display: flex; align-items: center; justify-content: center;";
             
             const img = document.createElement("img");
             img.style.cssText = "width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);";
@@ -2870,8 +2997,8 @@ async function openLoraSelectorModal(node) {
 
             body.appendChild(modelName);
             body.appendChild(localPathLabel);
-            card.appendChild(imgContainer);
-            card.appendChild(body);
+            imgContainer.appendChild(body);
+            cardClip.appendChild(imgContainer);
             
             // Click Local Card
             card.onclick = async () => {
@@ -2959,9 +3086,12 @@ async function openLoraSelectorModal(node) {
             if (selectedModel && (selectedModel.id === filename || selectedModel.local_filename === filename)) {
                 card.classList.add("selected");
             }
+            const cardClip = document.createElement("div");
+            cardClip.className = "anima-lora-card-clip";
+            card.appendChild(cardClip);
 
             const imgContainer = document.createElement("div");
-            imgContainer.style.cssText = "width: 100%; height: 100%; background: transparent; overflow: hidden; position: relative; flex: 1; display: flex; align-items: center; justify-content: center;";
+            imgContainer.style.cssText = "position: absolute; inset: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; display: flex; align-items: center; justify-content: center;";
 
             const img = document.createElement("img");
             img.style.cssText = "width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);";
@@ -3104,8 +3234,8 @@ async function openLoraSelectorModal(node) {
 
             body.appendChild(modelName);
             body.appendChild(strengthLabel);
-            card.appendChild(imgContainer);
-            card.appendChild(body);
+            imgContainer.appendChild(body);
+            cardClip.appendChild(imgContainer);
 
             card.onclick = async () => {
                 const allCards = gridContainer.querySelectorAll(".anima-lora-card");

@@ -1,4 +1,4 @@
-# Anima-Tools: ComfyUI Premium Artist, Character & LoRA Visual Selector 🎨
+# Anima-Tools: ComfyUI Premium Artist, Character, Clothing & LoRA Visual Selector 🎨
 
 <p align="center">
   <img src="https://img.shields.io/github/v/release/nregret/Comfyui-Anima-Tools?color=ff69b4&style=flat-square" alt="Release">
@@ -9,11 +9,11 @@
 </p>
 
 <p align="center">
-  <strong>专为 ComfyUI 设计的高性能、多维度二次元画师、角色与 Anima LoRA 视觉选择套件</strong>
+  <strong>专为 ComfyUI 设计的高性能、多维度二次元画师、角色、服装与 Anima LoRA 视觉选择套件</strong>
 </p>
 
 <p align="center">
-  Anima-Tools 是一款专为二次元（Anime）AI 绘画量身打造的 ComfyUI 视觉提示词与 Anima LoRA 辅助套件。它深度融合了庞大的画师风格库、精细的动漫角色图鉴与 Civitai LoRA 搜索下载面板，帮助创作者以极高的自由度与精确度构建脑海中的二次元画面。
+  Anima-Tools 是一款专为二次元（Anime）AI 绘画量身打造的 ComfyUI 视觉提示词与 Anima LoRA 辅助套件。它深度融合了庞大的画师风格库、精细的动漫角色图鉴、服装提示词图库、随机提示词整合节点与 Civitai LoRA 搜索下载面板，帮助创作者以极高的自由度与精确度构建脑海中的二次元画面。
 </p>
 
 ---
@@ -48,6 +48,18 @@
       <em>图 4. 标准版、Plus 版与 Anima Multi LoRA Loader 节点拼装工作流示意图</em>
     </td>
   </tr>
+  <tr>
+    <td align="center" width="50%">
+      <strong>👗 服装标签选择面板 (Clothing Tag Selector Panel)</strong><br>
+      <img src="./img/clothing.jpeg" alt="Anima Clothing Selector UI Preview"><br>
+      <em>图 5. 占位图：服装提示词图库预览，支持分类、特征、收藏与自定义项管理</em>
+    </td>
+    <td align="center" width="50%">
+      <strong>🎲 随机提示词整合节点 (Prompt Composer Node Preview)</strong><br>
+      <img src="./img/prompt_composer.jpeg" alt="Anima Prompt Composer Node Preview"><br>
+      <em>图 6. 占位图：运行工作流时随机组合画师、角色与服装，并在节点上显示结果预览</em>
+    </td>
+  </tr>
 </table>
 
 ---
@@ -74,16 +86,26 @@
 *   **多维度交叉筛选：** 提供**分类浏览面板**，支持按**角色性别**、**发色 (Hair Color)**、**瞳色 (Eye Color)**、**同人热度（插画总数）** 以及 **动漫原作系列 (Hot Series)** 进行交叉检索。
 *   **一键应用与清理：** 自动清理角色名字中可能带有的 `@` 字符或多余符号，提供纯净的 Prompts 角色标签输出。
 
-### 💻 3. 规范的前端交互设计 (Frontend UI Design)
+### 👗 3. 服装标签视觉选择器 (Anima Clothing Tag Selector)
+*   **服装提示词图库：** 内置服装与穿搭相关提示词数据，支持中英双语展示、Prompt Tags 快速复制与一键应用。
+*   **分类与特征筛选：** 支持按礼服、日常、制服、泳装、奇幻、性感等大类，以及蕾丝、露肩、长靴、吊袜带等细分特征快速定位。
+*   **收藏与自定义项：** 支持用户收藏分组、自定义服装项与备注式管理，便于沉淀常用穿搭模板。
+
+### 💻 4. 规范的前端交互设计 (Frontend UI Design)
 *   **3:4 黄金比例预览卡片：** 贴合动漫人像、立绘和 CG 的美学比例。带有平滑的 Hover 缩放微动效以及阴影表现。
 *   **精准分页与页码直达：** 分页控制器直观显示当前页数与总记录。特设页码直接跳转输入框，输入页码按回车即可直达。
 *   **多源 CDN 智能切换：** 提供 `JsDelivr`、`GitHub Raw` 和 `Statically` 等多条图片 CDN 通道，用户可在面板中自由切换，确保样图快速加载。
 
-### ⚙️ 4. 智能 Python 后端拼接 (Selector Plus Nodes)
+### 🎲 5. 随机提示词整合节点 (Anima Prompt Composer)
+*   **运行时自动随机：** 工作流运行到节点时自动从全量画师、角色与服装数据中随机选择内容，不包含用户自定义项。
+*   **统一字符串输出：** 输出顺序固定为 **画师 -> 角色 -> 服装**，可单独禁用任意类别；角色支持 `trigger` 或 `trigger + tags` 两种输出模式。
+*   **节点内可折叠预览：** 节点上直接显示随机结果的文字提示词与 3:4 图片预览，并支持折叠隐藏预览区域。
+
+### ⚙️ 6. 智能 Python 后端拼接 (Selector Plus Nodes)
 *   **双版本节点组合：** 提供基础版 (Selector) 与 Plus 版 (Selector+)。
 *   **智能防冲突拼接：** Plus 节点支持自定义 `extra_text`（额外文本）与 `separator`（分隔符）。当两段文本拼合时，系统会自动进行去污与去重，**避免产生双逗号或首尾多余空格**的排版问题，保证工作流稳定。
 
-### 🌐 5. 原生多语言跟随 (Native i18n)
+### 🌐 7. 原生多语言跟随 (Native i18n)
 *   支持中英双语，自动识别并实时跟随 ComfyUI 原生的多语言设置（`Comfy.Locale`），无需手动配置。
 
 ---
@@ -114,7 +136,7 @@
 
 ## 📖 节点参数说明 (Nodes Reference)
 
-本套件共提供 5 个核心节点，放置于 `AnimaArt` 分类目录下：
+本套件共提供 8 个核心节点，放置于 `AnimaArt` 分类目录下：
 
 ### 1. 🎨 Anima Artist Tag Selector & Selector+ (画师选择器)
 *   **基础版 (Selector):**
@@ -136,7 +158,25 @@
     *   `extra_text` (String): 追加的自定义提示词。
     *   `separator` (String): 智能防错连接符。
 
-### 3. 🧩 Anima Multi LoRA Loader (多 LoRA 加载器)
+### 3. 👗 Anima Clothing Tag Selector & Selector+ (服装选择器)
+*   **基础版 (Selector):**
+    *   `clothing_tags` (String): 前端交互选择填入的服装 Prompt Tags。
+    *   `mode` (Combo: `append` / `override`): 外部 Prompt 拼接模式。
+    *   `opt_prompt` (String, 可选输入): 外部传入的已有提示词。
+*   **增强版 (Selector+):**
+    *   `clothing_tags` (String): 选择的服装提示词（去污处理后）。
+    *   `extra_text` (String): 追加的自定义提示词。
+    *   `separator` (String): 智能防错连接符。
+
+### 4. 🎲 Anima Prompt Composer (随机提示词整合器)
+*   `enable_artist` / `enable_character` / `enable_clothing` (Boolean): 控制画师、角色、服装三个类别是否参与输出。
+*   `character_detail` (Combo: `trigger` / `trigger_tags`): 控制角色输出仅使用触发词，或使用触发词加完整特征。
+*   `seed` (Int): `-1` 表示每次运行自动随机；固定数值可获得可复现结果。
+*   `artist_count` (Int): 控制随机画师数量；角色与服装固定各随机 1 个。
+*   `preview_collapsed` (Boolean): 控制节点上的随机结果预览是否折叠。
+*   输出为单个 `STRING`，顺序固定为 **画师 -> 角色 -> 服装**。
+
+### 5. 🧩 Anima Multi LoRA Loader (多 LoRA 加载器)
 *   `model`: ComfyUI 标准模型输入。
 *   `lora_list_json` (String): 前端 LoRA 选择器维护的 LoRA 列表，包含文件名、启用状态与模型强度。
 *   前端面板支持本地 LoRA 预览、Civitai 搜索、下载进度、收藏、持久缩略图缓存与快速二次打开。
@@ -148,16 +188,21 @@
 ```text
 Anima-Tools/
 ├── __init__.py                # 插件注册入口与前端静态 Web 资源声明
-├── nodes.py                   # Python 核心后端（包含画师与角色的 Tag 净化、智能拼接等）
+├── nodes.py                   # Python 核心后端（包含画师、角色、服装、随机整合与 LoRA 加载等）
 ├── anima_lora_api.py          # Civitai LoRA 搜索、下载与配置持久化
 ├── README.md                  # 说明文件
 ├── js/
 │   ├── anima_artist_selector.js     # 画师风格视觉选择器前端核心面板交互逻辑
 │   ├── anima_character_selector.js  # 角色图鉴选择器前端核心属性检索与交互面板
+│   ├── anima_clothing_selector.js   # 服装提示词选择器前端核心面板交互逻辑
+│   ├── anima_prompt_composer.js     # 画师、角色、服装随机整合节点预览逻辑
 │   ├── anima_lora_selector.js       # 多 LoRA 搜索、下载、本地预览与缓存面板
 │   ├── anima_image_utils.js         # 共享图片加载缓存工具
+│   ├── anima_promo_links.js         # GitHub 与爱发电跳转入口共享组件
 │   ├── data.js                      # 40,000+ 详尽画师数据库 (含 CDN 映射与独特度评分)
 │   ├── character_data.js            # 动漫角色发色、瞳色、作品系列、同人热度多维数据库
+│   ├── clothing_data.js             # 服装提示词与预览图数据库
+│   ├── character_official_data.json # 角色官方触发词与完整特征数据
 │   └── i18n.js                      # 多语言智能切换路由 (跟随 Comfy.Locale)
 └── locales/
     ├── en/

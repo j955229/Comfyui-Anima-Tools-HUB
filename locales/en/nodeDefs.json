@@ -91,6 +91,93 @@
       "0": { "name": "text" }
     }
   },
+  "AnimaClothingTagSelector": {
+    "display_name": "Anima Clothing Tag Selector",
+    "description": "Select multiple clothing prompt tags visually through an advanced 2:3 preview grid panel.",
+    "inputs": {
+      "clothing_tags": {
+        "name": "Clothing Tags",
+        "tooltip": "The selected clothing prompt tags list, separated by commas."
+      },
+      "mode": {
+        "name": "Concatenation Mode",
+        "tooltip": "Append selected tags to optional input prompt, or override it completely.",
+        "values": {
+          "append": "Append",
+          "override": "Override"
+        }
+      },
+      "opt_prompt": {
+        "name": "Optional Prompt",
+        "tooltip": "An optional input prompt text slot to merge with selected clothing tags."
+      }
+    },
+    "outputs": {
+      "0": { "name": "text" }
+    }
+  },
+  "AnimaClothingTagSelectorPlus": {
+    "display_name": "Anima Clothing Tag Selector+",
+    "description": "Enhanced Clothing Tag Selector, automatically concatenating clothing tags and extra custom text via a custom separator.",
+    "inputs": {
+      "clothing_tags": {
+        "name": "Clothing Tags",
+        "tooltip": "The selected clothing prompt tags list, separated by commas."
+      },
+      "extra_text": {
+        "name": "Custom Text",
+        "tooltip": "A custom prompt text input below the clothing tags."
+      },
+      "separator": {
+        "name": "Separator",
+        "tooltip": "The delimiter used to join both sections, defaults to ', '."
+      }
+    },
+    "outputs": {
+      "0": { "name": "text" }
+    }
+  },
+  "AnimaPromptComposer": {
+    "display_name": "Anima Prompt Composer",
+    "description": "Randomly compose artist, character, and clothing prompt tags from the full built-in data range at workflow runtime.",
+    "inputs": {
+      "enable_artist": {
+        "name": "Enable Artist",
+        "tooltip": "When disabled, artist candidates are ignored and not included in the output."
+      },
+      "enable_character": {
+        "name": "Enable Character",
+        "tooltip": "When disabled, character candidates are ignored and not included in the output."
+      },
+      "enable_clothing": {
+        "name": "Enable Clothing",
+        "tooltip": "When disabled, clothing candidates are ignored and not included in the output."
+      },
+      "character_detail": {
+        "name": "Character Detail",
+        "tooltip": "Choose whether character output uses only trigger words or trigger words plus full feature tags.",
+        "values": {
+          "trigger": "Trigger Only",
+          "trigger_tags": "Trigger + Tags"
+        }
+      },
+      "seed": {
+        "name": "Seed",
+        "tooltip": "Use -1 for a fresh random result each run, or a fixed number for reproducible random selection."
+      },
+      "artist_count": {
+        "name": "Artist Count",
+        "tooltip": "Number of random artists to use. Character and clothing always select one each when enabled."
+      },
+      "preview_collapsed": {
+        "name": "Preview Collapsed",
+        "tooltip": "Internal saved state for the collapsible preview."
+      }
+    },
+    "outputs": {
+      "0": { "name": "text" }
+    }
+  },
   "AnimaMultiLoraLoader": {
     "display_name": "Anima Multi LoRA Loader",
     "description": "Select, download, preview, and apply multiple Anima LoRA models with cached local thumbnails.",

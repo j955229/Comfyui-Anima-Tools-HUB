@@ -224,6 +224,333 @@ class AnimaCharacterTagSelectorPlus:
 
         return (final_text,)
 
+class AnimaClothingTagSelector:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "clothing_tags": ("STRING", {"multiline": True, "default": ""}),
+                "mode": (["append", "override"], {"default": "append"}),
+            },
+            "optional": {
+                "opt_prompt": ("STRING", {"forceInput": True}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("text",)
+    FUNCTION = "process_tags"
+    CATEGORY = "AnimaArt"
+
+    def process_tags(self, clothing_tags, mode, opt_prompt=""):
+        tags_list = [t.strip() for t in clothing_tags.split(",") if t.strip()]
+        processed_tags = []
+
+        for tag in tags_list:
+            if tag.startswith("_raw_:"):
+                processed_tags.append(tag[6:])
+                continue
+            if tag:
+                processed_tags.append(tag)
+
+        joined_clothing = ", ".join(processed_tags)
+
+        if opt_prompt and opt_prompt.strip():
+            opt_prompt = opt_prompt.strip()
+            if mode == "append":
+                if joined_clothing:
+                    if opt_prompt.endswith(","):
+                        final_text = f"{joined_clothing}, {opt_prompt}"
+                    else:
+                        final_text = f"{joined_clothing}, {opt_prompt}, "
+                else:
+                    final_text = opt_prompt
+            else:
+                if joined_clothing:
+                    final_text = f"{joined_clothing}, "
+                else:
+                    final_text = ""
+        else:
+            if joined_clothing:
+                final_text = f"{joined_clothing}, "
+            else:
+                final_text = ""
+
+        return (final_text,)
+
+class AnimaClothingTagSelectorPlus:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "clothing_tags": ("STRING", {"multiline": True, "default": ""}),
+                "extra_text": ("STRING", {"multiline": True, "default": ""}),
+                "separator": ("STRING", {"default": ", "}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("text",)
+    FUNCTION = "process_tags"
+    CATEGORY = "AnimaArt"
+
+    def process_tags(self, clothing_tags, extra_text, separator=", "):
+        tags_list = [t.strip() for t in clothing_tags.split(",") if t.strip()]
+        processed_tags = []
+
+        for tag in tags_list:
+            if tag.startswith("_raw_:"):
+                processed_tags.append(tag[6:])
+                continue
+            if tag:
+                processed_tags.append(tag)
+
+        joined_clothing = ", ".join(processed_tags)
+        if joined_clothing:
+            joined_clothing += ", "
+
+        extra_text_clean = extra_text.strip() if extra_text else ""
+
+        if extra_text_clean and joined_clothing:
+            sep = separator if separator is not None else ", "
+            if sep.strip() == "," or sep.strip() == "":
+                final_text = f"{joined_clothing}{extra_text_clean}"
+            else:
+                final_text = f"{joined_clothing.rstrip(', ')}{sep}{extra_text_clean}"
+        elif extra_text_clean:
+            final_text = extra_text_clean
+        else:
+            final_text = joined_clothing
+
+        return (final_text,)
+
+class AnimaPromptComposer:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "enable_artist": ("BOOLEAN", {"default": True}),
+                "enable_character": ("BOOLEAN", {"default": True}),
+                "enable_clothing": ("BOOLEAN", {"default": True}),
+                "character_detail": (["trigger", "trigger_tags"], {"default": "trigger"}),
+                "seed": ("INT", {"default": -1, "min": -1, "max": 2147483647}),
+                "artist_count": ("INT", {"default": 1, "min": 0, "max": 20}),
+                "preview_collapsed": ("BOOLEAN", {"default": False}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("text",)
+    FUNCTION = "compose_prompt"
+    CATEGORY = "AnimaArt"
+    _data_cache = {}
+
+    @classmethod
+    def IS_CHANGED(cls, *args, **kwargs):
+        import hashlib
+        import json
+        import time
+
+        try:
+            seed = int(kwargs.get("seed", -1))
+        except Exception:
+            seed = -1
+        if seed < 0:
+            return time.time()
+
+        cache_kwargs = {key: value for key, value in kwargs.items() if key != "preview_collapsed"}
+        payload = json.dumps(cache_kwargs, ensure_ascii=False, sort_keys=True, default=str)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def _load_js_array(cls, filename):
+        import json
+        import os
+
+        if filename in cls._data_cache:
+            return cls._data_cache[filename]
+        path = os.path.join(os.path.dirname(__file__), "js", filename)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+            start = content.index("[")
+            data, _ = json.JSONDecoder().raw_decode(content[start:])
+        except Exception as e:
+            print(f"[Anima Tools] Failed to load prompt composer data {filename}: {e}")
+            return []
+        if not isinstance(data, list):
+            return []
+        cls._data_cache[filename] = [item for item in data if isinstance(item, dict)]
+        return cls._data_cache[filename]
+
+    @classmethod
+    def _load_json_object(cls, filename):
+        import json
+        import os
+
+        cache_key = f"json:{filename}"
+        if cache_key in cls._data_cache:
+            return cls._data_cache[cache_key]
+        path = os.path.join(os.path.dirname(__file__), "js", filename)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            print(f"[Anima Tools] Failed to load prompt composer data {filename}: {e}")
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        cls._data_cache[cache_key] = data
+        return data
+
+    def _split_prompt_tokens(self, value):
+        if isinstance(value, list):
+            parts = []
+            for item in value:
+                parts.extend(self._split_prompt_tokens(item))
+            return parts
+        return [
+            part.replace("_raw_:", "", 1).strip()
+            for part in str(value or "").split(",")
+            if part.replace("_raw_:", "", 1).strip()
+        ]
+
+    def _normalize_text(self, value):
+        return " ".join(str(value or "").strip().lower().replace("_", " ").split())
+
+    def _official_character_key(self, item):
+        return f"{self._normalize_text(item.get('name'))}||{self._normalize_text(item.get('copyright'))}"
+
+    def _pick_items(self, data, count, rng):
+        count = max(0, int(count or 0))
+        if count <= 0 or not data:
+            return []
+        if count >= len(data):
+            shuffled = data[:]
+            rng.shuffle(shuffled)
+            return shuffled
+        return rng.sample(data, count)
+
+    def _artist_entry(self, item):
+        name = str(item.get("name") or "").strip()
+        if not name:
+            return None
+        partition = item.get("p") or 1
+        item_id = item.get("id") or ""
+        return {
+            "section": "artist",
+            "key": f"artist:{item_id or name}",
+            "title": name,
+            "subtitle": f"{item.get('post_count', 0)} works" if item.get("post_count") else "",
+            "preview": f"https://fastly.jsdelivr.net/gh/ThetaCursed/Anima-Assets@main/images/{partition}/{item_id}.webp" if item_id else "",
+            "prompt_parts": [f"@{name}"],
+        }
+
+    def _character_entry(self, item, official_data):
+        import urllib.parse
+
+        name = str(item.get("name") or "").strip()
+        if not name:
+            return None
+        copyright = str(item.get("copyright") or "").strip()
+        official = official_data.get(self._official_character_key(item)) or {}
+        trigger = official.get("trigger") or (f"{name}, {copyright}" if copyright else name)
+        tags = self._split_prompt_tokens(official.get("tags"))
+        if not tags:
+            fallback = []
+            if item.get("gender"):
+                fallback.append(item.get("gender"))
+            if item.get("hair"):
+                fallback.append(f"{item.get('hair')} hair")
+            if item.get("eye"):
+                fallback.append(f"{item.get('eye')} eyes")
+            tags = fallback
+        raw_name = f"{name}, {copyright}" if copyright else name
+        return {
+            "section": "character",
+            "key": f"character:{name}||{copyright}",
+            "title": name,
+            "subtitle": copyright,
+            "preview": f"https://blobs.animadex.net/Outputs/thumbs/{urllib.parse.quote(raw_name, safe='')}.webp",
+            "trigger_parts": self._split_prompt_tokens(trigger),
+            "tag_parts": tags,
+        }
+
+    def _clothing_entry(self, item):
+        item_id = str(item.get("id") or "").strip()
+        title = str(item.get("name_zh") or item.get("name") or "").strip()
+        if not title:
+            return None
+        return {
+            "section": "clothing",
+            "key": f"clothing:{item_id or title}",
+            "title": title,
+            "subtitle": str(item.get("name") or ""),
+            "preview": str(item.get("preview") or ""),
+            "prompt_parts": self._split_prompt_tokens(item.get("tags")),
+        }
+
+    def _entry_parts(self, entry, section, character_detail):
+        if section == "character":
+            parts = self._split_prompt_tokens(entry.get("trigger_parts"))
+            if character_detail == "trigger_tags":
+                parts.extend(self._split_prompt_tokens(entry.get("tag_parts")))
+            return parts
+        return self._split_prompt_tokens(entry.get("prompt_parts"))
+
+    def _append_parts(self, output_parts, seen, entries, section, character_detail):
+        for entry in entries:
+            for part in self._entry_parts(entry, section, character_detail):
+                key = part.lower()
+                if key and key not in seen:
+                    seen.add(key)
+                    output_parts.append(part)
+
+    def compose_prompt(
+        self,
+        enable_artist,
+        enable_character,
+        enable_clothing,
+        character_detail,
+        seed,
+        artist_count,
+        preview_collapsed,
+    ):
+        import random
+
+        artist_data = self._load_js_array("data.js")
+        character_data = self._load_js_array("character_data.js")
+        clothing_data = self._load_js_array("clothing_data.js")
+        official_data = self._load_json_object("character_official_data.json")
+
+        try:
+            seed_value = int(seed)
+        except Exception:
+            seed_value = -1
+        rng = random.SystemRandom() if seed_value < 0 else random.Random(seed_value)
+
+        artist_items = self._pick_items(artist_data, artist_count, rng) if enable_artist else []
+        character_items = self._pick_items(character_data, 1, rng) if enable_character else []
+        clothing_items = self._pick_items(clothing_data, 1, rng) if enable_clothing else []
+
+        selected = {
+            "artist": [entry for entry in (self._artist_entry(item) for item in artist_items) if entry],
+            "character": [entry for entry in (self._character_entry(item, official_data) for item in character_items) if entry],
+            "clothing": [entry for entry in (self._clothing_entry(item) for item in clothing_items) if entry],
+        }
+
+        output_parts = []
+        seen = set()
+        self._append_parts(output_parts, seen, selected["artist"], "artist", character_detail)
+        self._append_parts(output_parts, seen, selected["character"], "character", character_detail)
+        self._append_parts(output_parts, seen, selected["clothing"], "clothing", character_detail)
+
+        text = ", ".join(output_parts)
+        if text:
+            text += ", "
+
+        return {"ui": {"anima_prompt_composer": [selected]}, "result": (text,)}
+
 class AnimaMultiLoraLoader:
     @classmethod
     def INPUT_TYPES(cls):
@@ -306,6 +633,9 @@ NODE_CLASS_MAPPINGS = {
     "AnimaArtistTagSelectorPlus": AnimaArtistTagSelectorPlus,
     "AnimaCharacterTagSelector": AnimaCharacterTagSelector,
     "AnimaCharacterTagSelectorPlus": AnimaCharacterTagSelectorPlus,
+    "AnimaClothingTagSelector": AnimaClothingTagSelector,
+    "AnimaClothingTagSelectorPlus": AnimaClothingTagSelectorPlus,
+    "AnimaPromptComposer": AnimaPromptComposer,
     "AnimaMultiLoraLoader": AnimaMultiLoraLoader
 }
 
@@ -314,6 +644,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AnimaArtistTagSelectorPlus": "Anima Artist Tag Selector+",
     "AnimaCharacterTagSelector": "Anima Character Tag Selector",
     "AnimaCharacterTagSelectorPlus": "Anima Character Tag Selector+",
+    "AnimaClothingTagSelector": "Anima Clothing Tag Selector",
+    "AnimaClothingTagSelectorPlus": "Anima Clothing Tag Selector+",
+    "AnimaPromptComposer": "Anima Prompt Composer",
     "AnimaMultiLoraLoader": "Anima Multi LoRA Loader"
 }
 
@@ -346,6 +679,8 @@ def get_favorites_path():
     os.makedirs(user_dir, exist_ok=True)
     return os.path.join(user_dir, "anima_tools_favorites.json")
 
+FAVORITE_SECTIONS = ["artist", "character", "lora", "clothing"]
+
 def get_default_favorites_data():
     return {
         "artist": {
@@ -359,6 +694,10 @@ def get_default_favorites_data():
         "lora": {
             "groups": [{"id": "default", "name": "默认收藏", "isSystem": True}],
             "items": []
+        },
+        "clothing": {
+            "groups": [{"id": "default", "name": "默认收藏", "isSystem": True}],
+            "items": []
         }
     }
 
@@ -367,7 +706,7 @@ def normalize_favorites_data(data):
     if not isinstance(data, dict):
         data = {}
     normalized = {}
-    for key in ["artist", "character", "lora"]:
+    for key in FAVORITE_SECTIONS:
         section = data.get(key)
         if not isinstance(section, dict):
             section = {}
@@ -400,7 +739,7 @@ def merge_favorites_data(existing, incoming):
     merged = normalize_favorites_data(existing)
     if not isinstance(incoming, dict):
         raise ValueError("Favorites payload must be a JSON object")
-    for key in ["artist", "character", "lora"]:
+    for key in FAVORITE_SECTIONS:
         if key in incoming:
             section = incoming.get(key)
             if not isinstance(section, dict):
