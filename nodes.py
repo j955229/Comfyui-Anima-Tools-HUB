@@ -324,6 +324,106 @@ class AnimaClothingTagSelectorPlus:
 
         return (final_text,)
 
+class AnimaBackgroundTagSelector:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "background_tags": ("STRING", {"multiline": True, "default": ""}),
+                "mode": (["append", "override"], {"default": "append"}),
+            },
+            "optional": {
+                "opt_prompt": ("STRING", {"forceInput": True}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("text",)
+    FUNCTION = "process_tags"
+    CATEGORY = "AnimaArt"
+
+    def process_tags(self, background_tags, mode, opt_prompt=""):
+        tags_list = [t.strip() for t in background_tags.split(",") if t.strip()]
+        processed_tags = []
+
+        for tag in tags_list:
+            if tag.startswith("_raw_:"):
+                processed_tags.append(tag[6:])
+                continue
+            if tag:
+                processed_tags.append(tag)
+
+        joined_background = ", ".join(processed_tags)
+
+        if opt_prompt and opt_prompt.strip():
+            opt_prompt = opt_prompt.strip()
+            if mode == "append":
+                if joined_background:
+                    if opt_prompt.endswith(","):
+                        final_text = f"{joined_background}, {opt_prompt}"
+                    else:
+                        final_text = f"{joined_background}, {opt_prompt}, "
+                else:
+                    final_text = opt_prompt
+            else:
+                if joined_background:
+                    final_text = f"{joined_background}, "
+                else:
+                    final_text = ""
+        else:
+            if joined_background:
+                final_text = f"{joined_background}, "
+            else:
+                final_text = ""
+
+        return (final_text,)
+
+class AnimaBackgroundTagSelectorPlus:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "background_tags": ("STRING", {"multiline": True, "default": ""}),
+                "extra_text": ("STRING", {"multiline": True, "default": ""}),
+                "separator": ("STRING", {"default": ", "}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("text",)
+    FUNCTION = "process_tags"
+    CATEGORY = "AnimaArt"
+
+    def process_tags(self, background_tags, extra_text, separator=", "):
+        tags_list = [t.strip() for t in background_tags.split(",") if t.strip()]
+        processed_tags = []
+
+        for tag in tags_list:
+            if tag.startswith("_raw_:"):
+                processed_tags.append(tag[6:])
+                continue
+            if tag:
+                processed_tags.append(tag)
+
+        joined_background = ", ".join(processed_tags)
+        if joined_background:
+            joined_background += ", "
+
+        extra_text_clean = extra_text.strip() if extra_text else ""
+
+        if extra_text_clean and joined_background:
+            sep = separator if separator is not None else ", "
+            if sep.strip() == "," or sep.strip() == "":
+                final_text = f"{joined_background}{extra_text_clean}"
+            else:
+                final_text = f"{joined_background.rstrip(', ')}{sep}{extra_text_clean}"
+        elif extra_text_clean:
+            final_text = extra_text_clean
+        else:
+            final_text = joined_background
+
+        return (final_text,)
+
 class AnimaPromptComposer:
     @classmethod
     def INPUT_TYPES(cls):
@@ -635,6 +735,8 @@ NODE_CLASS_MAPPINGS = {
     "AnimaCharacterTagSelectorPlus": AnimaCharacterTagSelectorPlus,
     "AnimaClothingTagSelector": AnimaClothingTagSelector,
     "AnimaClothingTagSelectorPlus": AnimaClothingTagSelectorPlus,
+    "AnimaBackgroundTagSelector": AnimaBackgroundTagSelector,
+    "AnimaBackgroundTagSelectorPlus": AnimaBackgroundTagSelectorPlus,
     "AnimaPromptComposer": AnimaPromptComposer,
     "AnimaMultiLoraLoader": AnimaMultiLoraLoader
 }
@@ -646,6 +748,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AnimaCharacterTagSelectorPlus": "Anima Character Tag Selector+",
     "AnimaClothingTagSelector": "Anima Clothing Tag Selector",
     "AnimaClothingTagSelectorPlus": "Anima Clothing Tag Selector+",
+    "AnimaBackgroundTagSelector": "Anima Background Tag Selector",
+    "AnimaBackgroundTagSelectorPlus": "Anima Background Tag Selector+",
     "AnimaPromptComposer": "Anima Prompt Composer",
     "AnimaMultiLoraLoader": "Anima Multi LoRA Loader"
 }
@@ -657,6 +761,7 @@ from aiohttp import web
 import json
 import os
 import hashlib
+import re
 import threading
 import time
 import urllib.parse
@@ -679,7 +784,7 @@ def get_favorites_path():
     os.makedirs(user_dir, exist_ok=True)
     return os.path.join(user_dir, "anima_tools_favorites.json")
 
-FAVORITE_SECTIONS = ["artist", "character", "lora", "clothing"]
+FAVORITE_SECTIONS = ["artist", "character", "lora", "clothing", "background"]
 
 def get_default_favorites_data():
     return {
@@ -696,6 +801,10 @@ def get_default_favorites_data():
             "items": []
         },
         "clothing": {
+            "groups": [{"id": "default", "name": "默认收藏", "isSystem": True}],
+            "items": []
+        },
+        "background": {
             "groups": [{"id": "default", "name": "默认收藏", "isSystem": True}],
             "items": []
         }
@@ -1309,6 +1418,7 @@ async def lora_local_metadata_api(request):
 # 缩略图磁盘缓存目录，放在 user 下以便 ComfyUI 重启和插件升级后继续复用
 _THUMB_CACHE_DIR = os.path.join(get_anima_tools_user_dir(), "thumb_cache")
 _REMOTE_THUMB_CACHE_DIR = os.path.join(get_anima_tools_user_dir(), "remote_thumb_cache")
+_REMOTE_THUMB_INDEX_PATH = os.path.join(_REMOTE_THUMB_CACHE_DIR, "index.json")
 _LOCAL_THUMB_JOBS = set()
 _LOCAL_THUMB_QUEUE = []
 _LOCAL_THUMB_WORKER_ACTIVE = False
@@ -1461,6 +1571,11 @@ def _placeholder_svg_response(cache_control: str = "no-store") -> web.Response:
 
 _REMOTE_THUMB_JOBS = set()
 _REMOTE_THUMB_LOCK = threading.Lock()
+_REMOTE_THUMB_INDEX_LOCK = threading.Lock()
+_CIVITAI_UUID_RE = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+    re.IGNORECASE
+)
 
 def _clear_cache_directory(directory: str) -> tuple[int, int, list[str]]:
     deleted_count = 0
@@ -1485,9 +1600,147 @@ def _remote_thumb_cache_path(cache_key: str, width: int) -> str:
     safe_key = "".join(ch for ch in cache_key if ch.isalnum())[:80] or "remote"
     return os.path.join(_REMOTE_THUMB_CACHE_DIR, f"{safe_key}_{width}.webp")
 
-def _download_remote_thumbnail(url: str, cache_path: str, width: int, job_key: str) -> None:
+def _remote_thumb_content_cache_path(content_hash: str, width: int) -> str:
+    safe_hash = "".join(ch for ch in content_hash if ch.isalnum())[:80] or "content"
+    return os.path.join(_REMOTE_THUMB_CACHE_DIR, f"content_{safe_hash}_{width}.webp")
+
+def _remote_thumb_index_key(cache_key: str, width: int) -> str:
+    return f"{cache_key}:{width}"
+
+def _load_remote_thumb_index_unlocked() -> dict:
+    try:
+        if not os.path.exists(_REMOTE_THUMB_INDEX_PATH):
+            return {}
+        with open(_REMOTE_THUMB_INDEX_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+def _save_remote_thumb_index_unlocked(index: dict) -> None:
+    os.makedirs(_REMOTE_THUMB_CACHE_DIR, exist_ok=True)
+    tmp_path = _REMOTE_THUMB_INDEX_PATH + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(index, f, ensure_ascii=False, separators=(",", ":"))
+    os.replace(tmp_path, _REMOTE_THUMB_INDEX_PATH)
+
+def _set_remote_thumb_index(cache_key: str, width: int, cache_path: str) -> None:
+    if not cache_key or not cache_path:
+        return
+    with _REMOTE_THUMB_INDEX_LOCK:
+        index = _load_remote_thumb_index_unlocked()
+        index[_remote_thumb_index_key(cache_key, width)] = os.path.basename(cache_path)
+        _save_remote_thumb_index_unlocked(index)
+
+def _find_remote_thumb_indexed_path(cache_key: str, width: int) -> str:
+    if not cache_key:
+        return ""
+    direct_path = _remote_thumb_cache_path(cache_key, width)
+    if os.path.exists(direct_path):
+        return direct_path
+    with _REMOTE_THUMB_INDEX_LOCK:
+        index = _load_remote_thumb_index_unlocked()
+        cached_name = index.get(_remote_thumb_index_key(cache_key, width))
+    if not cached_name:
+        return ""
+    indexed_path = os.path.join(_REMOTE_THUMB_CACHE_DIR, os.path.basename(cached_name))
+    return indexed_path if os.path.exists(indexed_path) else ""
+
+def _find_remote_thumb_cache(cache_keys: list[str], width: int) -> tuple[str, str]:
+    for cache_key in cache_keys:
+        cache_path = _find_remote_thumb_indexed_path(cache_key, width)
+        if cache_path:
+            return cache_path, cache_key
+    return "", ""
+
+def _extract_civitai_image_id(url: str) -> str:
+    if not url or "civitai" not in url.lower():
+        return ""
+    try:
+        parsed = urllib.parse.urlparse(url)
+        path = urllib.parse.unquote(parsed.path or "")
+    except Exception:
+        path = str(url)
+
+    cache_match = re.search(r"/civitai-media-cache/([^/]+)", path, re.IGNORECASE)
+    if cache_match:
+        return cache_match.group(1)
+
+    uuid_match = _CIVITAI_UUID_RE.search(path)
+    if uuid_match:
+        return uuid_match.group(0).lower()
+
+    numeric_match = re.search(r"/images/(\d+)", path, re.IGNORECASE)
+    if numeric_match:
+        return numeric_match.group(1)
+    return ""
+
+def _normalize_remote_source_url(url: str) -> str:
+    try:
+        parsed = urllib.parse.urlparse(url)
+        query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+        query = [
+            (key, value)
+            for key, value in query
+            if key.lower() not in {"width", "height", "format", "quality"}
+        ]
+        query.sort()
+        return urllib.parse.urlunparse((
+            parsed.scheme.lower(),
+            parsed.netloc.lower(),
+            urllib.parse.unquote(parsed.path or ""),
+            "",
+            urllib.parse.urlencode(query),
+            ""
+        ))
+    except Exception:
+        return url
+
+def _remote_thumb_stable_cache_key(source_url: str, image_id: str = "", url_hash: str = "") -> str:
+    stable_image_id = image_id or _extract_civitai_image_id(source_url)
+    if stable_image_id:
+        safe_image_id = "".join(ch for ch in stable_image_id if ch.isalnum()).lower()
+        if safe_image_id:
+            return f"civitai{safe_image_id}"
+    if source_url:
+        normalized_url = _normalize_remote_source_url(source_url)
+        return hashlib.sha256(normalized_url.encode("utf-8", errors="ignore")).hexdigest()
+    return "".join(ch for ch in url_hash if ch.isalnum()) or ""
+
+def _remote_thumb_cache_keys(source_url: str, image_id: str, url_hash: str) -> list[str]:
+    keys = []
+    stable_key = _remote_thumb_stable_cache_key(source_url, image_id, url_hash)
+    if stable_key:
+        keys.append(stable_key)
+    if source_url:
+        legacy_key = hashlib.sha256(source_url.encode("utf-8", errors="ignore")).hexdigest()
+        keys.append(legacy_key)
+    if url_hash:
+        keys.append(url_hash)
+
+    unique_keys = []
+    for key in keys:
+        if key and key not in unique_keys:
+            unique_keys.append(key)
+    return unique_keys
+
+def _write_remote_thumbnail_content(cache_key: str, width: int, thumb_data: bytes) -> str:
+    os.makedirs(_REMOTE_THUMB_CACHE_DIR, exist_ok=True)
+    content_hash = hashlib.sha256(thumb_data).hexdigest()
+    content_path = _remote_thumb_content_cache_path(content_hash, width)
+    if not os.path.exists(content_path):
+        tmp_path = content_path + ".tmp"
+        with open(tmp_path, "wb") as f:
+            f.write(thumb_data)
+        os.replace(tmp_path, content_path)
+    _set_remote_thumb_index(cache_key, width, content_path)
+    return content_path
+
+def _download_remote_thumbnail(url: str, cache_key: str, width: int, job_key: str) -> None:
     try:
         if Image is None:
+            return
+        if _find_remote_thumb_indexed_path(cache_key, width):
             return
         req = urllib.request.Request(url, headers={"User-Agent": "ComfyUI-Anima-Tools/1.0"})
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -1498,10 +1751,9 @@ def _download_remote_thumbnail(url: str, cache_path: str, width: int, job_key: s
             ratio = width / img.width
             img = img.resize((width, int(img.height * ratio)), Image.LANCZOS)
 
-        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-        tmp_path = cache_path + ".tmp"
-        img.save(tmp_path, format="WEBP", quality=82)
-        os.replace(tmp_path, cache_path)
+        buf = BytesIO()
+        img.save(buf, format="WEBP", quality=82)
+        _write_remote_thumbnail_content(cache_key, width, buf.getvalue())
     except Exception as e:
         print(f"[Anima Tools] Remote preview cache failed: {e}")
     finally:
@@ -1518,16 +1770,18 @@ async def lora_remote_preview_api(request):
 
         source_url = request.query.get("url", "").strip()
         url_hash = request.query.get("url_hash", "").strip()
-        if source_url:
-            cache_key = hashlib.sha256(source_url.encode("utf-8", errors="ignore")).hexdigest()
-        else:
-            cache_key = url_hash
+        image_id = request.query.get("image_id", "").strip()
+        miss_mode = request.query.get("miss", "").strip().lower()
+        cache_keys = _remote_thumb_cache_keys(source_url, image_id, url_hash)
 
-        if not cache_key:
+        if not cache_keys:
             return _placeholder_svg_response()
 
-        cache_path = _remote_thumb_cache_path(cache_key, width)
-        if os.path.exists(cache_path):
+        cache_key = cache_keys[0]
+        cache_path, matched_key = _find_remote_thumb_cache(cache_keys, width)
+        if cache_path:
+            if matched_key != cache_key:
+                _set_remote_thumb_index(cache_key, width, cache_path)
             resp = web.FileResponse(cache_path)
             resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
             return resp
@@ -1541,10 +1795,12 @@ async def lora_remote_preview_api(request):
                     _REMOTE_THUMB_JOBS.add(job_key)
                     threading.Thread(
                         target=_download_remote_thumbnail,
-                        args=(source_url, cache_path, width, job_key),
+                        args=(source_url, cache_key, width, job_key),
                         daemon=True
                     ).start()
 
+        if miss_mode == "error":
+            return web.Response(status=202, headers={"Cache-Control": "no-store", "Retry-After": "1"})
         return _placeholder_svg_response("no-store")
     except web.HTTPException:
         raise

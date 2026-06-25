@@ -137,6 +137,52 @@
       "0": { "name": "text" }
     }
   },
+  "AnimaBackgroundTagSelector": {
+    "display_name": "Anima Background Tag Selector",
+    "description": "Select multiple background prompt tags visually through an advanced 2:3 preview grid panel.",
+    "inputs": {
+      "background_tags": {
+        "name": "Background Tags",
+        "tooltip": "The selected background prompt tags list, separated by commas."
+      },
+      "mode": {
+        "name": "Concatenation Mode",
+        "tooltip": "Append selected tags to optional input prompt, or override it completely.",
+        "values": {
+          "append": "Append",
+          "override": "Override"
+        }
+      },
+      "opt_prompt": {
+        "name": "Optional Prompt",
+        "tooltip": "An optional input prompt text slot to merge with selected background tags."
+      }
+    },
+    "outputs": {
+      "0": { "name": "text" }
+    }
+  },
+  "AnimaBackgroundTagSelectorPlus": {
+    "display_name": "Anima Background Tag Selector+",
+    "description": "Enhanced Background Tag Selector, automatically concatenating background tags and extra custom text via a custom separator.",
+    "inputs": {
+      "background_tags": {
+        "name": "Background Tags",
+        "tooltip": "The selected background prompt tags list, separated by commas."
+      },
+      "extra_text": {
+        "name": "Custom Text",
+        "tooltip": "A custom prompt text input below the background tags."
+      },
+      "separator": {
+        "name": "Separator",
+        "tooltip": "The delimiter used to join both sections, defaults to ', '."
+      }
+    },
+    "outputs": {
+      "0": { "name": "text" }
+    }
+  },
   "AnimaPromptComposer": {
     "display_name": "Anima Prompt Composer",
     "description": "Randomly compose artist, character, and clothing prompt tags from the full built-in data range at workflow runtime.",
