@@ -12,6 +12,13 @@ app.registerExtension({
             origOnCreated?.apply(this, arguments);
             setTimeout(() => reorderSelectorButtons(this), 0);
         };
+
+        const origOnConfigure = nodeType.prototype.onConfigure;
+        nodeType.prototype.onConfigure = function () {
+            const result = origOnConfigure?.apply(this, arguments);
+            setTimeout(() => reorderSelectorButtons(this), 0);
+            return result;
+        };
     }
 });
 

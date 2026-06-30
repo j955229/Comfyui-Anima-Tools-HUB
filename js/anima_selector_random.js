@@ -12,8 +12,15 @@ function getRandomState(node) {
     return node.properties[SELECTOR_RANDOM_PROPERTY];
 }
 
+function normalizeBoolean(value) {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value !== 0;
+    const text = String(value ?? "").trim().toLowerCase();
+    return text === "true" || text === "1" || text === "yes" || text === "on";
+}
+
 function isRandomEnabled(node, section) {
-    return Boolean(getRandomState(node)[section]);
+    return normalizeBoolean(getRandomState(node)[section]);
 }
 
 function setRandomEnabled(node, section, enabled) {
@@ -26,6 +33,12 @@ function refreshNode(node) {
     node.setDirtyCanvas?.(true, true);
     node.graph?.setDirtyCanvas?.(true, true);
     window?.app?.graph?.setDirtyCanvas?.(true, true);
+}
+
+function refreshSelectorActionRows(node) {
+    const rows = node?._animaSelectorActionRows;
+    if (!rows || typeof rows !== "object") return;
+    Object.values(rows).forEach(row => row?.__animaSelectorRefresh?.());
 }
 
 function getWidget(node, name) {
@@ -73,10 +86,22 @@ function syncSelectorTagsFromExecution(node, message) {
 export function installSelectorExecutionSync(nodeType) {
     if (!nodeType?.prototype || nodeType.prototype.__animaSelectorExecutionSyncInstalled) return;
     nodeType.prototype.__animaSelectorExecutionSyncInstalled = true;
+
+    const origOnConfigure = nodeType.prototype.onConfigure;
+    nodeType.prototype.onConfigure = function () {
+        const result = origOnConfigure?.apply(this, arguments);
+        setTimeout(() => {
+            refreshSelectorActionRows(this);
+            refreshNode(this);
+        }, 0);
+        return result;
+    };
+
     const origOnExecuted = nodeType.prototype.onExecuted;
     nodeType.prototype.onExecuted = function (message) {
         const result = origOnExecuted?.apply(this, arguments);
         syncSelectorTagsFromExecution(this, message);
+        refreshSelectorActionRows(this);
         return result;
     };
 }
@@ -123,15 +148,26 @@ export function addSelectorActionRow(node, config) {
 
     if (!node || !section || typeof onOpen !== "function") return null;
     node._animaSelectorActionRows = node._animaSelectorActionRows || {};
-    if (node._animaSelectorActionRows[section]) return node._animaSelectorActionRows[section];
+    const existingRow = node._animaSelectorActionRows[section];
+    if (existingRow && node.widgets?.includes(existingRow)) {
+        existingRow.__animaSelectorRefresh?.();
+        return existingRow;
+    }
+    if (existingRow) {
+        delete node._animaSelectorActionRows[section];
+    }
 
     if (typeof node.addDOMWidget !== "function") {
         const openWidget = node.addWidget("button", label, null, onOpen);
         const toggleWidget = node.addWidget("button", isRandomEnabled(node, section) ? t("Random On") : t("Random Off"), null, () => {
             setRandomEnabled(node, section, !isRandomEnabled(node, section));
-            toggleWidget.name = isRandomEnabled(node, section) ? t("Random On") : t("Random Off");
+            toggleWidget.__animaSelectorRefresh?.();
         });
         toggleWidget.__animaSelectorActionSection = section;
+        toggleWidget.__animaSelectorRefresh = () => {
+            toggleWidget.name = isRandomEnabled(node, section) ? t("Random On") : t("Random Off");
+        };
+        toggleWidget.__animaSelectorRefresh();
         node._animaSelectorActionRows[section] = toggleWidget;
         return toggleWidget;
     }
@@ -202,6 +238,7 @@ export function addSelectorActionRow(node, config) {
         setValue: () => {},
     });
     widget.__animaSelectorActionSection = section;
+    widget.__animaSelectorRefresh = updateToggle;
     widget.serialize = false;
     widget.computeSize = (width) => [width, 32];
     widget.computedHeight = 32;
