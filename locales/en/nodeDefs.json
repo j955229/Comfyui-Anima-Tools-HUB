@@ -183,9 +183,96 @@
       "0": { "name": "text" }
     }
   },
+  "AnimaPoseTagSelector": {
+    "display_name": "Anima Pose Tag Selector",
+    "description": "Select multiple pose prompt tags visually through an advanced 2:3 preview grid panel.",
+    "inputs": {
+      "pose_tags": {
+        "name": "Pose Tags",
+        "tooltip": "The selected pose prompt tags list, separated by commas."
+      },
+      "mode": {
+        "name": "Concatenation Mode",
+        "tooltip": "Append selected tags to optional input prompt, or override it completely.",
+        "values": {
+          "append": "Append",
+          "override": "Override"
+        }
+      },
+      "opt_prompt": {
+        "name": "Optional Prompt",
+        "tooltip": "An optional input prompt text slot to merge with selected pose tags."
+      }
+    },
+    "outputs": {
+      "0": { "name": "text" }
+    }
+  },
+  "AnimaPoseTagSelectorPlus": {
+    "display_name": "Anima Pose Tag Selector+",
+    "description": "Enhanced Pose Tag Selector, automatically concatenating pose tags and extra custom text via a custom separator.",
+    "inputs": {
+      "pose_tags": {
+        "name": "Pose Tags",
+        "tooltip": "The selected pose prompt tags list, separated by commas."
+      },
+      "extra_text": {
+        "name": "Custom Text",
+        "tooltip": "A custom prompt text input below the pose tags."
+      },
+      "separator": {
+        "name": "Separator",
+        "tooltip": "The delimiter used to join both sections, defaults to ', '."
+      }
+    },
+    "outputs": {
+      "0": { "name": "text" }
+    }
+  },
+  "AnimaPromptPlus": {
+    "display_name": "Anima Prompt Plus",
+    "description": "Build a complete prompt from editable quality, artist, character, clothing, pose, background, and extra prompt sections, with visual selector buttons for each tag section.",
+    "inputs": {
+      "quality_prompt": {
+        "name": "Quality Prompt",
+        "tooltip": "Leading quality and style prompt text. This is placed before all selected tag sections."
+      },
+      "artist_tags": {
+        "name": "Artist Tags",
+        "tooltip": "Artist style tags filled by the Artist Selector or edited manually. Output is normalized as @artist."
+      },
+      "character_tags": {
+        "name": "Character Tags",
+        "tooltip": "Character prompt tags filled by the Character Selector or edited manually."
+      },
+      "clothing_tags": {
+        "name": "Clothing Tags",
+        "tooltip": "Clothing prompt tags filled by the Clothing Selector or edited manually."
+      },
+      "pose_tags": {
+        "name": "Pose Tags",
+        "tooltip": "Pose prompt tags filled by the Pose Selector or edited manually."
+      },
+      "background_tags": {
+        "name": "Background Tags",
+        "tooltip": "Background prompt tags filled by the Background Selector or edited manually."
+      },
+      "extra_prompt": {
+        "name": "Extra Prompt",
+        "tooltip": "Additional prompt text appended after all selected tag sections."
+      },
+      "separator": {
+        "name": "Separator",
+        "tooltip": "The delimiter used to join cleaned prompt parts. Defaults to ', '."
+      }
+    },
+    "outputs": {
+      "0": { "name": "text" }
+    }
+  },
   "AnimaPromptComposer": {
-    "display_name": "Anima Prompt Composer",
-    "description": "Randomly compose artist, character, and clothing prompt tags from the full built-in data range at workflow runtime.",
+    "display_name": "Anima Prompt Random Draw",
+    "description": "Randomly draw artist, character, clothing, background, and pose prompt tags from the full built-in data range at workflow runtime.",
     "inputs": {
       "enable_artist": {
         "name": "Enable Artist",
@@ -198,6 +285,14 @@
       "enable_clothing": {
         "name": "Enable Clothing",
         "tooltip": "When disabled, clothing candidates are ignored and not included in the output."
+      },
+      "enable_background": {
+        "name": "Enable Background",
+        "tooltip": "When disabled, background candidates are ignored and not included in the output."
+      },
+      "enable_pose": {
+        "name": "Enable Pose",
+        "tooltip": "When disabled, pose candidates are ignored and not included in the output."
       },
       "character_detail": {
         "name": "Character Detail",
@@ -213,11 +308,15 @@
       },
       "artist_count": {
         "name": "Artist Count",
-        "tooltip": "Number of random artists to use. Character and clothing always select one each when enabled."
+        "tooltip": "Number of random artists to use. Character, clothing, background, and pose always select one each when enabled."
       },
       "preview_collapsed": {
         "name": "Preview Collapsed",
         "tooltip": "Internal saved state for the collapsible preview."
+      },
+      "resolved_prompt": {
+        "name": "Resolved Prompt",
+        "tooltip": "Stores the latest random prompt generated by this node. It is automatically updated during execution and saved into workflow metadata."
       }
     },
     "outputs": {

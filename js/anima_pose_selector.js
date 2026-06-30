@@ -3,7 +3,7 @@ import { t } from "./i18n.js";
 import { markImageLoaded, isImageLoaded } from "./anima_image_utils.js";
 import { createPromoLinks } from "./anima_promo_links.js";
 import { addSelectorActionRow, installSelectorExecutionSync } from "./anima_selector_random.js";
-import "./clothing_data.js";
+import "./pose_data.js";
 
 const THEME = {
     accent: "#db2777",
@@ -13,65 +13,112 @@ const THEME = {
 };
 
 const CATEGORY_LIST = [
-    "礼服/裙装 (Dress & Gown)",
-    "日常/休闲 (Casual & Daily)",
-    "制服/西服 (Uniform & Suit)",
-    "泳装/内衣 (Swimsuit & Lingerie)",
-    "角色扮演/奇幻 (Fantasy & Cosplay)",
-    "性感/暴露 (Revealing)",
+    "手势与手臂 (Gestures & Arms)",
+    "站立与动态 (Standing & Dynamic)",
+    "坐姿 (Sitting Poses)",
+    "卧姿与趴姿 (Lying & Prone)",
+    "整理服饰与发型 (Adjusting & Dressing)",
+    "道具与携物 (Props & Holding)",
+    "双人与互动 (Duo & Interaction)",
+    "日常与其它 (Daily & Miscellaneous)",
 ];
 
 const TRAITS_TRANSLATION = {
-    "apron": "围裙",
-    "backless": "露背",
-    "bare legs": "光腿",
-    "boots": "靴子",
-    "collar": "衣领",
-    "garter belt": "吊袜带",
-    "glasses": "眼镜",
-    "gloves": "手套",
-    "halterneck": "吊颈式设计",
-    "high heels": "高跟鞋",
-    "kneehighs": "及膝袜",
-    "lace": "蕾丝",
-    "latex": "乳胶",
-    "leather": "皮革",
-    "miniskirt": "超短裙",
-    "off-shoulder": "露肩/一字领",
-    "pantyhose": "连裤袜",
-    "ribbon": "丝带/蝴蝶结",
-    "short shorts": "超短裤",
-    "side slit": "侧开叉",
-    "silk": "丝绸",
-    "sleeveless": "无袖",
-    "thighhighs": "大腿袜",
-    "tie": "领带/系带",
-    "translucent": "半透明",
+    "adjusting": "整理",
+    "akimbo": "叉腰",
+    "arm": "手臂",
+    "arms": "双臂",
+    "armpit": "腋下",
+    "armpits": "腋下",
+    "back": "背后",
+    "balance": "平衡",
+    "balancing": "保持平衡",
+    "battle": "战斗",
+    "bending": "弯腰",
+    "bent": "弯曲",
+    "bowing": "鞠躬",
+    "carry": "携带",
+    "carrying": "携带",
+    "cheek": "脸颊",
+    "chest": "胸前",
+    "chin": "下巴",
+    "clenched": "握紧",
+    "closed": "闭合",
+    "clothes": "衣物",
+    "crawling": "爬行",
+    "crossed": "交叉",
+    "crouching": "蹲姿",
+    "cuddle": "拥抱",
+    "cuddling": "拥抱",
+    "dress": "裙装",
+    "ear": "耳朵",
+    "eye": "眼睛",
+    "eyes": "双眼",
+    "face": "脸部",
+    "feeding": "喂食",
+    "feet": "脚",
+    "fidgeting": "摆弄",
+    "fighting": "战斗",
+    "finger": "手指",
+    "fingers": "手指",
+    "fist": "拳头",
+    "fists": "拳头",
+    "hair": "头发",
+    "hand": "手",
+    "hands": "双手",
+    "head": "头部",
+    "holding": "持物",
+    "hug": "拥抱",
+    "hugging": "拥抱",
+    "kneeling": "跪姿",
+    "knees": "膝盖",
+    "leaning": "倚靠",
+    "legs": "双腿",
+    "lying": "躺姿",
+    "mouth": "嘴",
+    "one": "单手/单侧",
+    "open": "张开",
+    "outstretched": "伸出",
+    "peace": "胜利手势",
+    "pointing": "指向",
+    "pose": "姿势",
+    "prone": "趴姿",
+    "raised": "举起",
+    "reaching": "伸手",
+    "salute": "敬礼",
+    "sitting": "坐姿",
+    "spread": "张开",
+    "squatting": "蹲姿",
+    "standing": "站姿",
+    "support": "支撑",
+    "touching": "触碰",
+    "up": "向上",
+    "waving": "挥手",
 };
 
 app.registerExtension({
-    name: "AnimaClothingTagSelector.extension",
+    name: "AnimaPoseTagSelector.extension",
 
     async beforeRegisterNodeDef(nodeType, nodeData) {
-        if (nodeData.name === "AnimaClothingTagSelector" || nodeData.name === "AnimaClothingTagSelectorPlus" || nodeData.name === "AnimaPromptPlus") {
+        if (nodeData.name === "AnimaPoseTagSelector" || nodeData.name === "AnimaPoseTagSelectorPlus" || nodeData.name === "AnimaPromptPlus") {
             installSelectorExecutionSync(nodeType);
             const origOnCreated = nodeType.prototype.onNodeCreated;
             nodeType.prototype.onNodeCreated = function () {
                 origOnCreated?.apply(this, arguments);
 
-                const clothingTagsWidget = this.widgets.find(w => w.name === "clothing_tags");
-                if (!clothingTagsWidget) return;
+                const poseTagsWidget = this.widgets.find(w => w.name === "pose_tags");
+                if (!poseTagsWidget) return;
                 addSelectorActionRow(this, {
-                    section: "clothing",
-                    label: t("Open Clothing Selector"),
+                    section: "pose",
+                    label: t("Open Pose Selector"),
                     accent: THEME.accent,
                     accentText: THEME.accentText,
                     onOpen: async () => {
-                        if (!window.clothingData) {
-                            alert(t("Anima clothing database is loading, please wait a few seconds..."));
+                        if (!window.poseData) {
+                            alert(t("Anima pose database is loading, please wait a few seconds..."));
                             return;
                         }
-                        await openClothingSelectorModal(this, clothingTagsWidget);
+                        await openPoseSelectorModal(this, poseTagsWidget);
                     },
                 });
             };
@@ -157,21 +204,14 @@ function copyText(text, callback) {
     }
 }
 
-async function openClothingSelectorModal(node, tagsWidget) {
-    const clothingData = Array.isArray(window.clothingData) ? window.clothingData : [];
-    const dataById = new Map(clothingData.map(item => [String(item.id), item]));
-    const currentTokens = new Set(splitPromptTokens(tagsWidget?.value || "").map(normalizePromptToken));
-    const selectedClothing = new Set();
-
-    clothingData.forEach(item => {
-        const tokens = splitPromptTokens(item.tags).map(normalizePromptToken);
-        if (tokens.length > 0 && tokens.every(token => currentTokens.has(token))) {
-            selectedClothing.add(getItemKey(item));
-        }
-    });
+async function openPoseSelectorModal(node, tagsWidget) {
+    const poseData = Array.isArray(window.poseData) ? window.poseData : [];
+    const dataById = new Map(poseData.map(item => [String(item.id), item]));
+    // Keep selection one-way: existing node text should not auto-check cards in the modal.
+    const selectedPose = new Set();
 
     let favoritesConfig = {
-        clothing: {
+        pose: {
             groups: [{ id: "default", name: t("My Favorites"), isSystem: true }],
             items: [],
         }
@@ -183,33 +223,29 @@ async function openClothingSelectorModal(node, tagsWidget) {
             favoritesConfig = await response.json();
         }
     } catch (e) {
-        console.error("[Anima Tools] Failed to load clothing favorites", e);
+        console.error("[Anima Tools] Failed to load pose favorites", e);
     }
 
-    if (!favoritesConfig.clothing) {
-        favoritesConfig.clothing = {
+    if (!favoritesConfig.pose) {
+        favoritesConfig.pose = {
             groups: [{ id: "default", name: t("My Favorites"), isSystem: true }],
             items: [],
         };
     }
 
-    let groups = Array.isArray(favoritesConfig.clothing.groups) && favoritesConfig.clothing.groups.length
-        ? favoritesConfig.clothing.groups
+    let groups = Array.isArray(favoritesConfig.pose.groups) && favoritesConfig.pose.groups.length
+        ? favoritesConfig.pose.groups
         : [{ id: "default", name: t("My Favorites"), isSystem: true }];
     if (!groups.some(group => group.id === "default")) {
         groups = [{ id: "default", name: t("My Favorites"), isSystem: true }, ...groups];
     }
 
-    let favoriteItems = Array.isArray(favoritesConfig.clothing.items) ? favoritesConfig.clothing.items : [];
+    let favoriteItems = Array.isArray(favoritesConfig.pose.items) ? favoritesConfig.pose.items : [];
     const favoriteMap = new Map();
     const favoriteSet = new Set();
 
     favoriteItems.forEach(item => {
         if (item.isCustom) {
-            const customTokens = splitPromptTokens(item.customContent).map(normalizePromptToken);
-            if (customTokens.length > 0 && customTokens.every(token => currentTokens.has(token))) {
-                selectedClothing.add(getItemKey(item));
-            }
             return;
         }
         const key = String(item.id || item.name || "");
@@ -219,13 +255,13 @@ async function openClothingSelectorModal(node, tagsWidget) {
         }
     });
 
-    const SORT_STORAGE_KEY = "anima-clothing-selector-active-sort";
-    const PAGE_STORAGE_KEY = "anima-clothing-selector-active-page";
-    const SCROLL_STORAGE_KEY = "anima-clothing-selector-active-scroll";
-    const SIDEBAR_SCROLL_STORAGE_KEY = "anima-clothing-selector-sidebar-scroll";
-    const DISPLAY_LANG_STORAGE_KEY = "anima-clothing-selector-display-lang";
-    const FILTER_STORAGE_KEY = "anima-clothing-selector-filters";
-    const COLLECTIONS_COLLAPSE_STORAGE_KEY = "anima-clothing-selector-collections-collapsed";
+    const SORT_STORAGE_KEY = "anima-pose-selector-active-sort";
+    const PAGE_STORAGE_KEY = "anima-pose-selector-active-page";
+    const SCROLL_STORAGE_KEY = "anima-pose-selector-active-scroll";
+    const SIDEBAR_SCROLL_STORAGE_KEY = "anima-pose-selector-sidebar-scroll";
+    const DISPLAY_LANG_STORAGE_KEY = "anima-pose-selector-display-lang";
+    const FILTER_STORAGE_KEY = "anima-pose-selector-filters";
+    const COLLECTIONS_COLLAPSE_STORAGE_KEY = "anima-pose-selector-collections-collapsed";
 
     let activeSort = localStorage.getItem(SORT_STORAGE_KEY) || "id-asc";
     let displayLang = localStorage.getItem(DISPLAY_LANG_STORAGE_KEY) || "bilingual";
@@ -249,10 +285,10 @@ async function openClothingSelectorModal(node, tagsWidget) {
         if (Array.isArray(saved.traits)) saved.traits.forEach(v => activeFilters.traits.add(v));
         if (saved.collection) activeFilters.collection = saved.collection;
     } catch (e) {
-        console.warn("[Anima Tools] Failed to restore clothing filters", e);
+        console.warn("[Anima Tools] Failed to restore pose filters", e);
     }
 
-    const allTraits = Array.from(clothingData.reduce((map, item) => {
+    const allTraits = Array.from(poseData.reduce((map, item) => {
         (Array.isArray(item.traits) ? item.traits : []).forEach(trait => {
             map.set(trait, (map.get(trait) || 0) + 1);
         });
@@ -268,8 +304,8 @@ async function openClothingSelectorModal(node, tagsWidget) {
         });
 
         favoriteItems = nextItems;
-        favoritesConfig.clothing.groups = groups;
-        favoritesConfig.clothing.items = favoriteItems;
+        favoritesConfig.pose.groups = groups;
+        favoritesConfig.pose.items = favoriteItems;
 
         try {
             const response = await fetch("/anima-tools/favorites", {
@@ -280,7 +316,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
             if (!response.ok) throw new Error(await response.text());
             return true;
         } catch (e) {
-            console.error("[Anima Tools] Failed to save clothing favorites", e);
+            console.error("[Anima Tools] Failed to save pose favorites", e);
             alert(t("Failed to save favorites"));
             return false;
         }
@@ -296,21 +332,21 @@ async function openClothingSelectorModal(node, tagsWidget) {
 
     const styleSheet = document.createElement("style");
     styleSheet.textContent = `
-        @keyframes animaClothingFadeIn {
+        @keyframes animaPoseFadeIn {
             from { opacity: 0; transform: scale(0.97) translateY(8px); }
             to { opacity: 1; transform: scale(1) translateY(0); }
         }
-        @keyframes animaClothingSpin {
+        @keyframes animaPoseSpin {
             to { transform: translate(-50%, -50%) rotate(360deg); }
         }
-        @keyframes animaClothingShimmer {
+        @keyframes animaPoseShimmer {
             0% { background-position: -200% 0; }
             100% { background-position: 200% 0; }
         }
-        .anima-clothing-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
-        .anima-clothing-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .anima-clothing-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius: 999px; }
-        .anima-clothing-btn {
+        .anima-pose-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .anima-pose-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .anima-pose-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius: 999px; }
+        .anima-pose-btn {
             border: 1px solid rgba(255,255,255,0.08);
             border-radius: 12px;
             background: rgba(255,255,255,0.05);
@@ -327,32 +363,32 @@ async function openClothingSelectorModal(node, tagsWidget) {
             user-select: none;
             white-space: nowrap;
         }
-        .anima-clothing-btn:hover:not(:disabled) {
+        .anima-pose-btn:hover:not(:disabled) {
             background: rgba(255,255,255,0.11);
             border-color: rgba(255,255,255,0.16);
             color: #fff;
         }
-        .anima-clothing-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-        .anima-clothing-btn.primary {
+        .anima-pose-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        .anima-pose-btn.primary {
             background: linear-gradient(135deg, #db2777, #9d174d);
             border-color: rgba(219,39,119,0.35);
             color: #fff;
             box-shadow: 0 8px 20px rgba(219,39,119,0.24);
         }
-        .anima-clothing-btn.primary:hover:not(:disabled) {
+        .anima-pose-btn.primary:hover:not(:disabled) {
             box-shadow: 0 10px 25px rgba(219,39,119,0.36);
         }
-        .anima-clothing-btn.danger {
+        .anima-pose-btn.danger {
             background: rgba(239,68,68,0.08);
             border-color: rgba(239,68,68,0.22);
             color: #fca5a5;
         }
-        .anima-clothing-btn.active {
+        .anima-pose-btn.active {
             background: rgba(219,39,119,0.18);
             border-color: rgba(219,39,119,0.42);
             color: #f9a8d4;
         }
-        .anima-clothing-pagination {
+        .anima-pose-pagination {
             padding: 14px 24px;
             background: linear-gradient(180deg, rgba(18,18,24,0.2), rgba(18,18,24,0.62));
             border-top: 1px solid rgba(255,255,255,0.06);
@@ -363,7 +399,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
             flex-wrap: wrap;
             box-shadow: 0 -12px 32px rgba(0,0,0,0.18);
         }
-        .anima-clothing-pagination-stats {
+        .anima-pose-pagination-stats {
             min-height: 36px;
             padding: 0 14px;
             border-radius: 999px;
@@ -381,7 +417,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
             text-overflow: ellipsis;
             box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
         }
-        .anima-clothing-pagination-stats::before {
+        .anima-pose-pagination-stats::before {
             content: "";
             width: 7px;
             height: 7px;
@@ -390,7 +426,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
             box-shadow: 0 0 14px rgba(219,39,119,0.72);
             flex: 0 0 auto;
         }
-        .anima-clothing-pagination-controls {
+        .anima-pose-pagination-controls {
             display: flex;
             align-items: center;
             justify-content: flex-end;
@@ -398,7 +434,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
             flex-wrap: wrap;
             margin-left: auto;
         }
-        .anima-clothing-page-number {
+        .anima-pose-page-number {
             min-height: 36px;
             padding: 0;
             border-radius: 0;
@@ -410,7 +446,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
             gap: 7px;
             box-shadow: none;
         }
-        .anima-clothing-page-btn {
+        .anima-pose-page-btn {
             min-height: 36px;
             padding: 0 13px;
             background: rgba(255,255,255,0.05);
@@ -422,17 +458,17 @@ async function openClothingSelectorModal(node, tagsWidget) {
             cursor: pointer;
             transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
         }
-        .anima-clothing-page-btn:hover:not(:disabled) {
+        .anima-pose-page-btn:hover:not(:disabled) {
             background: rgba(219,39,119,0.16);
             color: #fff;
             border-color: rgba(219,39,119,0.38);
             transform: translateY(-1px);
         }
-        .anima-clothing-page-btn:disabled {
+        .anima-pose-page-btn:disabled {
             opacity: 0.35;
             cursor: not-allowed;
         }
-        .anima-clothing-page-input {
+        .anima-pose-page-input {
             width: 48px;
             padding: 6px 4px;
             background: transparent;
@@ -446,12 +482,12 @@ async function openClothingSelectorModal(node, tagsWidget) {
             outline: none;
             transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
         }
-        .anima-clothing-page-input:focus {
+        .anima-pose-page-input:focus {
             background: transparent;
             border-bottom-color: rgba(219,39,119,0.72);
             box-shadow: none;
         }
-        .anima-clothing-select, .anima-clothing-input {
+        .anima-pose-select, .anima-pose-input {
             background: rgba(10,10,15,0.76);
             border: 1px solid rgba(255,255,255,0.1);
             border-radius: 12px;
@@ -460,13 +496,13 @@ async function openClothingSelectorModal(node, tagsWidget) {
             font-size: 13px;
             transition: border-color 0.18s ease, box-shadow 0.18s ease;
         }
-        .anima-clothing-select { padding: 10px 13px; cursor: pointer; }
-        .anima-clothing-input { padding: 11px 14px; }
-        .anima-clothing-select:focus, .anima-clothing-input:focus {
+        .anima-pose-select { padding: 10px 13px; cursor: pointer; }
+        .anima-pose-input { padding: 11px 14px; }
+        .anima-pose-select:focus, .anima-pose-input:focus {
             border-color: rgba(219,39,119,0.55);
             box-shadow: 0 0 0 3px rgba(219,39,119,0.12);
         }
-        .anima-clothing-sidebar-item {
+        .anima-pose-sidebar-item {
             padding: 10px 12px;
             border-radius: 10px;
             color: #a1a1aa;
@@ -481,16 +517,16 @@ async function openClothingSelectorModal(node, tagsWidget) {
             font-weight: 650;
             user-select: none;
         }
-        .anima-clothing-sidebar-item:hover {
+        .anima-pose-sidebar-item:hover {
             background: rgba(255,255,255,0.05);
             color: #fff;
         }
-        .anima-clothing-sidebar-item.active {
+        .anima-pose-sidebar-item.active {
             background: rgba(219,39,119,0.14);
             border-color: rgba(219,39,119,0.34);
             color: #f9a8d4;
         }
-        .anima-clothing-clear-filters-btn {
+        .anima-pose-clear-filters-btn {
             width: calc(100% - 16px);
             margin: 0 8px 12px;
             padding: 9px 12px;
@@ -507,16 +543,16 @@ async function openClothingSelectorModal(node, tagsWidget) {
             gap: 7px;
             transition: all 0.18s ease;
         }
-        .anima-clothing-clear-filters-btn:hover:not(:disabled) {
+        .anima-pose-clear-filters-btn:hover:not(:disabled) {
             background: rgba(219,39,119,0.13);
             border-color: rgba(219,39,119,0.32);
             color: #f9a8d4;
         }
-        .anima-clothing-clear-filters-btn:disabled {
+        .anima-pose-clear-filters-btn:disabled {
             opacity: 0.42;
             cursor: not-allowed;
         }
-        .anima-clothing-section-header {
+        .anima-pose-section-header {
             color: #71717a;
             font-size: 11px;
             font-weight: 850;
@@ -528,22 +564,22 @@ async function openClothingSelectorModal(node, tagsWidget) {
             gap: 8px;
             user-select: none;
         }
-        .anima-clothing-section-header.foldable {
+        .anima-pose-section-header.foldable {
             cursor: pointer;
         }
-        .anima-clothing-section-header.foldable:hover {
+        .anima-pose-section-header.foldable:hover {
             color: #f9a8d4;
         }
-        .anima-clothing-section-title {
+        .anima-pose-section-title {
             min-width: 0;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        .anima-clothing-section-spacer {
+        .anima-pose-section-spacer {
             flex: 1;
         }
-        .anima-clothing-section-icon-btn {
+        .anima-pose-section-icon-btn {
             width: 20px;
             height: 20px;
             border-radius: 6px;
@@ -558,22 +594,22 @@ async function openClothingSelectorModal(node, tagsWidget) {
             padding: 0;
             flex: 0 0 auto;
         }
-        .anima-clothing-section-icon-btn:hover {
+        .anima-pose-section-icon-btn:hover {
             background: rgba(219,39,119,0.18);
             border-color: rgba(219,39,119,0.34);
             color: #fff;
         }
-        .anima-clothing-section-arrow {
+        .anima-pose-section-arrow {
             display: inline-flex;
             align-items: center;
             justify-content: center;
             transition: transform 0.18s ease;
             flex: 0 0 auto;
         }
-        .anima-clothing-section-arrow.collapsed {
+        .anima-pose-section-arrow.collapsed {
             transform: rotate(-90deg);
         }
-        .anima-clothing-check-row {
+        .anima-pose-check-row {
             display: flex;
             gap: 9px;
             align-items: flex-start;
@@ -586,9 +622,9 @@ async function openClothingSelectorModal(node, tagsWidget) {
             line-height: 1.28;
             transition: background 0.15s ease;
         }
-        .anima-clothing-check-row:hover { background: rgba(255,255,255,0.045); }
-        .anima-clothing-check-row input { margin-top: 2px; accent-color: #db2777; }
-        .anima-clothing-card {
+        .anima-pose-check-row:hover { background: rgba(255,255,255,0.045); }
+        .anima-pose-check-row input { margin-top: 2px; accent-color: #db2777; }
+        .anima-pose-card {
             position: relative;
             width: 100%;
             height: 100%;
@@ -604,15 +640,15 @@ async function openClothingSelectorModal(node, tagsWidget) {
             cursor: pointer;
             transition: border-color 0.18s ease, box-shadow 0.18s ease;
         }
-        .anima-clothing-card:hover {
+        .anima-pose-card:hover {
             border-color: rgba(219,39,119,0.82);
             box-shadow: 0 12px 30px rgba(0,0,0,0.38), 0 0 18px rgba(219,39,119,0.14);
         }
-        .anima-clothing-card.selected {
+        .anima-pose-card.selected {
             border-color: #db2777;
             box-shadow: 0 12px 30px rgba(0,0,0,0.36), 0 0 24px rgba(219,39,119,0.24);
         }
-        .anima-clothing-card-clip {
+        .anima-pose-card-clip {
             position: absolute;
             inset: 2px;
             z-index: 0;
@@ -621,7 +657,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
             clip-path: inset(0 round 13px);
             background: #0a0a10;
         }
-        .anima-clothing-card img {
+        .anima-pose-card img {
             position: absolute;
             inset: 0;
             width: 100%;
@@ -631,7 +667,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
             opacity: 0;
             transition: opacity 0.28s ease;
         }
-        .anima-clothing-placeholder {
+        .anima-pose-placeholder {
             position: absolute;
             inset: 0;
             display: flex;
@@ -643,16 +679,16 @@ async function openClothingSelectorModal(node, tagsWidget) {
             font-weight: 900;
             z-index: 1;
         }
-        .anima-clothing-shimmer {
+        .anima-pose-shimmer {
             position: absolute;
             inset: 0;
             background: linear-gradient(90deg, rgba(20,20,30,0.9) 25%, rgba(219,39,119,0.12) 50%, rgba(20,20,30,0.9) 75%);
             background-size: 200% 100%;
-            animation: animaClothingShimmer 1.5s infinite linear;
+            animation: animaPoseShimmer 1.5s infinite linear;
             z-index: 2;
             pointer-events: none;
         }
-        .anima-clothing-spinner {
+        .anima-pose-spinner {
             position: absolute;
             left: 50%;
             top: 50%;
@@ -661,16 +697,16 @@ async function openClothingSelectorModal(node, tagsWidget) {
             border: 2.5px solid rgba(219,39,119,0.16);
             border-top-color: #db2777;
             border-radius: 50%;
-            animation: animaClothingSpin 0.85s infinite linear;
+            animation: animaPoseSpin 0.85s infinite linear;
         }
-        .anima-clothing-card-mask {
+        .anima-pose-card-mask {
             position: absolute;
             inset: 0;
             background: linear-gradient(to top, rgba(10,10,16,0.99) 0%, rgba(10,10,16,0.72) 42%, rgba(10,10,16,0.16) 100%);
             z-index: 3;
             pointer-events: none;
         }
-        .anima-clothing-card-info {
+        .anima-pose-card-info {
             position: absolute;
             left: 0;
             right: 0;
@@ -684,8 +720,8 @@ async function openClothingSelectorModal(node, tagsWidget) {
             transition: opacity 0.2s ease;
             pointer-events: none;
         }
-        .anima-clothing-card:hover .anima-clothing-card-info { opacity: 0; }
-        .anima-clothing-card-title {
+        .anima-pose-card:hover .anima-pose-card-info { opacity: 0; }
+        .anima-pose-card-title {
             color: #fff;
             font-size: 13.5px;
             font-weight: 850;
@@ -694,7 +730,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
             text-overflow: ellipsis;
             text-shadow: 0 2px 8px rgba(0,0,0,0.72);
         }
-        .anima-clothing-card-sub {
+        .anima-pose-card-sub {
             color: #cbd5e1;
             font-size: 10.5px;
             white-space: nowrap;
@@ -702,13 +738,13 @@ async function openClothingSelectorModal(node, tagsWidget) {
             text-overflow: ellipsis;
             opacity: 0.9;
         }
-        .anima-clothing-card-badges {
+        .anima-pose-card-badges {
             display: flex;
             gap: 5px;
             min-width: 0;
             overflow: hidden;
         }
-        .anima-clothing-badge {
+        .anima-pose-badge {
             color: #f9a8d4;
             background: rgba(219,39,119,0.16);
             border: 1px solid rgba(219,39,119,0.24);
@@ -720,7 +756,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .anima-clothing-tags-overlay {
+        .anima-pose-tags-overlay {
             position: absolute;
             inset: 0;
             z-index: 5;
@@ -737,11 +773,11 @@ async function openClothingSelectorModal(node, tagsWidget) {
             gap: 10px;
             overflow: hidden;
         }
-        .anima-clothing-card:hover .anima-clothing-tags-overlay {
+        .anima-pose-card:hover .anima-pose-tags-overlay {
             opacity: 1;
             pointer-events: auto;
         }
-        .anima-clothing-tags-title {
+        .anima-pose-tags-title {
             border: 1px solid rgba(219,39,119,0.32);
             background: rgba(219,39,119,0.16);
             color: #fce7f3;
@@ -757,7 +793,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
             width: 100%;
             min-width: 0;
         }
-        .anima-clothing-tags-list {
+        .anima-pose-tags-list {
             display: flex;
             flex-wrap: wrap;
             gap: 5px;
@@ -768,8 +804,8 @@ async function openClothingSelectorModal(node, tagsWidget) {
             scrollbar-width: none;
             -ms-overflow-style: none;
         }
-        .anima-clothing-tags-list::-webkit-scrollbar { display: none; }
-        .anima-clothing-tag-pill {
+        .anima-pose-tags-list::-webkit-scrollbar { display: none; }
+        .anima-pose-tag-pill {
             border: 1px solid rgba(255,255,255,0.1);
             background: rgba(255,255,255,0.07);
             color: #e5e7eb;
@@ -784,12 +820,12 @@ async function openClothingSelectorModal(node, tagsWidget) {
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        .anima-clothing-tag-pill:hover {
+        .anima-pose-tag-pill:hover {
             border-color: rgba(219,39,119,0.45);
             color: #fff;
             background: rgba(219,39,119,0.22);
         }
-        .anima-clothing-create-card {
+        .anima-pose-create-card {
             position: relative;
             width: 100%;
             height: 100%;
@@ -804,12 +840,12 @@ async function openClothingSelectorModal(node, tagsWidget) {
             user-select: none;
             transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
         }
-        .anima-clothing-create-card:hover {
+        .anima-pose-create-card:hover {
             border-color: rgba(219,39,119,0.86);
             background: rgba(219,39,119,0.07);
             box-shadow: 0 12px 30px rgba(0,0,0,0.32), 0 0 18px rgba(219,39,119,0.16);
         }
-        .anima-clothing-create-card-content {
+        .anima-pose-create-card-content {
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -820,11 +856,11 @@ async function openClothingSelectorModal(node, tagsWidget) {
             text-align: center;
             transition: transform 0.2s ease, color 0.2s ease;
         }
-        .anima-clothing-create-card:hover .anima-clothing-create-card-content {
+        .anima-pose-create-card:hover .anima-pose-create-card-content {
             color: #fff;
             transform: scale(1.06);
         }
-        .anima-clothing-icon-btn {
+        .anima-pose-icon-btn {
             position: absolute;
             right: 9px;
             z-index: 7;
@@ -841,12 +877,12 @@ async function openClothingSelectorModal(node, tagsWidget) {
             cursor: pointer;
             transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
         }
-        .anima-clothing-icon-btn:hover {
+        .anima-pose-icon-btn:hover {
             transform: scale(1.1);
             background: rgba(10,10,15,0.72);
             color: #f9a8d4;
         }
-        .anima-clothing-selected-mark {
+        .anima-pose-selected-mark {
             position: absolute;
             top: 9px;
             left: 9px;
@@ -862,11 +898,11 @@ async function openClothingSelectorModal(node, tagsWidget) {
             color: #fff;
             transition: all 0.15s ease;
         }
-        .anima-clothing-card.selected .anima-clothing-selected-mark {
+        .anima-pose-card.selected .anima-pose-selected-mark {
             background: #db2777;
             border-color: #db2777;
         }
-        .anima-clothing-popover {
+        .anima-pose-popover {
             position: fixed;
             z-index: 1000000;
             min-width: 170px;
@@ -882,7 +918,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
     document.head.appendChild(styleSheet);
 
     const overlay = createEl("div");
-    overlay.id = "anima-clothing-selector-overlay";
+    overlay.id = "anima-pose-selector-overlay";
     overlay.style.cssText = `
         position: fixed;
         inset: 0;
@@ -909,11 +945,11 @@ async function openClothingSelectorModal(node, tagsWidget) {
         box-shadow: 0 25px 60px rgba(0,0,0,0.58);
         display: flex;
         flex-direction: column;
-        animation: animaClothingFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        animation: animaPoseFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     `;
 
     overlay.onclick = (event) => {
-        if (event.target === overlay) applySelectionAndClose();
+        if (event.target === overlay) closeModal();
     };
 
     const header = createEl("div");
@@ -929,20 +965,20 @@ async function openClothingSelectorModal(node, tagsWidget) {
 
     const titleWrap = createEl("div");
     titleWrap.style.cssText = "min-width: 240px;";
-    const title = createEl("div", null, t("Anima Clothing Tag Selector"));
+    const title = createEl("div", null, t("Anima Pose Tag Selector"));
     title.style.cssText = "font-size: 20px; font-weight: 850; color: #fff; line-height: 1.2;";
-    const subtitle = createEl("div", null, t("Browse and select outfit prompt tags with 2:3 visual preview cards."));
+    const subtitle = createEl("div", null, t("Browse and select pose prompt tags with visual preview cards."));
     subtitle.style.cssText = "font-size: 12.5px; color: #a1a1aa; margin-top: 5px;";
     titleWrap.appendChild(title);
     titleWrap.appendChild(subtitle);
 
-    const searchInput = createEl("input", "anima-clothing-input");
+    const searchInput = createEl("input", "anima-pose-input");
     searchInput.type = "search";
-    searchInput.placeholder = t("Search clothing or tags...");
+    searchInput.placeholder = t("Search pose or tags...");
     searchInput.value = "";
     searchInput.style.cssText += "flex: 1; min-width: 260px;";
 
-    const closeBtn = createEl("button", "anima-clothing-btn", t("Cancel"));
+    const closeBtn = createEl("button", "anima-pose-btn", t("Cancel"));
     closeBtn.onclick = () => closeModal();
 
     const headerActions = createEl("div");
@@ -969,7 +1005,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
     const filterControls = createEl("div");
     filterControls.style.cssText = "display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap;";
 
-    const sortSelect = createEl("select", "anima-clothing-select");
+    const sortSelect = createEl("select", "anima-pose-select");
     sortSelect.innerHTML = `
         <option value="id-desc">${t("Latest")}</option>
         <option value="id-asc">${t("Oldest")}</option>
@@ -986,7 +1022,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
         triggerFilter();
     };
 
-    const langSelect = createEl("select", "anima-clothing-select");
+    const langSelect = createEl("select", "anima-pose-select");
     langSelect.innerHTML = `
         <option value="bilingual">${t("Bilingual")}</option>
         <option value="en">${t("English Only")}</option>
@@ -1005,18 +1041,18 @@ async function openClothingSelectorModal(node, tagsWidget) {
     const actionControls = createEl("div");
     actionControls.style.cssText = "display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end;";
 
-    const copySelectedBtn = createEl("button", "anima-clothing-btn");
+    const copySelectedBtn = createEl("button", "anima-pose-btn");
     copySelectedBtn.innerHTML = `${copyIcon()} ${t("Copy Selected")}`;
     copySelectedBtn.onclick = () => {
         const text = buildSelectedText();
         if (!text) {
-            alert(t("Please select at least one clothing item first."));
+            alert(t("Please select at least one pose first."));
             return;
         }
         copyText(text, () => showToast(t("Copied Successfully")));
     };
 
-    const showSelectedOnlyBtn = createEl("button", "anima-clothing-btn", t("Show Selected"));
+    const showSelectedOnlyBtn = createEl("button", "anima-pose-btn", t("Show Selected"));
     showSelectedOnlyBtn.onclick = () => {
         showSelectedOnly = !showSelectedOnly;
         showSelectedOnlyBtn.classList.toggle("active", showSelectedOnly);
@@ -1024,11 +1060,11 @@ async function openClothingSelectorModal(node, tagsWidget) {
         triggerFilter();
     };
 
-    const clearSelectedBtn = createEl("button", "anima-clothing-btn danger");
+    const clearSelectedBtn = createEl("button", "anima-pose-btn danger");
     clearSelectedBtn.innerHTML = `${trashIcon()} ${t("Clear Selected")}`;
     clearSelectedBtn.onclick = () => {
-        if (selectedClothing.size === 0) return;
-        selectedClothing.clear();
+        if (selectedPose.size === 0) return;
+        selectedPose.clear();
         updateCountLabel();
         renderCurrentPage();
     };
@@ -1043,7 +1079,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
     const main = createEl("div");
     main.style.cssText = "display: flex; flex: 1; min-height: 0; background: rgba(10,10,15,0.18);";
 
-    const sidebar = createEl("aside", "anima-clothing-scrollbar");
+    const sidebar = createEl("aside", "anima-pose-scrollbar");
     sidebar.style.cssText = `
         width: 280px;
         flex: 0 0 280px;
@@ -1058,7 +1094,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
     const gridArea = createEl("div");
     gridArea.style.cssText = "flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0;";
 
-    const listContainer = createEl("div", "anima-clothing-scrollbar");
+    const listContainer = createEl("div", "anima-pose-scrollbar");
     listContainer.style.cssText = `
         flex: 1;
         overflow-y: auto;
@@ -1085,18 +1121,18 @@ async function openClothingSelectorModal(node, tagsWidget) {
         });
     }, { root: listContainer, rootMargin: "320px" });
 
-    const pagination = createEl("div", "anima-clothing-pagination");
+    const pagination = createEl("div", "anima-pose-pagination");
 
-    const pageStats = createEl("div", "anima-clothing-pagination-stats");
+    const pageStats = createEl("div", "anima-pose-pagination-stats");
 
-    const pageControls = createEl("div", "anima-clothing-pagination-controls");
+    const pageControls = createEl("div", "anima-pose-pagination-controls");
 
-    const firstBtn = createEl("button", "anima-clothing-page-btn", t("First"));
-    const prevBtn = createEl("button", "anima-clothing-page-btn", t("Prev"));
-    const nextBtn = createEl("button", "anima-clothing-page-btn", t("Next"));
-    const lastBtn = createEl("button", "anima-clothing-page-btn", t("Last"));
-    const pageNumContainer = createEl("div", "anima-clothing-page-number");
-    const pageInput = createEl("input", "anima-clothing-page-input");
+    const firstBtn = createEl("button", "anima-pose-page-btn", t("First"));
+    const prevBtn = createEl("button", "anima-pose-page-btn", t("Prev"));
+    const nextBtn = createEl("button", "anima-pose-page-btn", t("Next"));
+    const lastBtn = createEl("button", "anima-pose-page-btn", t("Last"));
+    const pageNumContainer = createEl("div", "anima-pose-page-number");
+    const pageInput = createEl("input", "anima-pose-page-input");
     pageInput.type = "text";
     const totalPagesLabel = createEl("span");
 
@@ -1137,14 +1173,14 @@ async function openClothingSelectorModal(node, tagsWidget) {
         gap: 14px;
     `;
 
-    const countLabel = createEl("button", "anima-clothing-btn active");
+    const countLabel = createEl("button", "anima-pose-btn active");
     countLabel.onclick = () => showSelectedOnlyBtn.click();
 
     const footerBtns = createEl("div");
     footerBtns.style.cssText = "display: flex; align-items: center; gap: 10px;";
-    const cancelFooterBtn = createEl("button", "anima-clothing-btn", t("Cancel"));
+    const cancelFooterBtn = createEl("button", "anima-pose-btn", t("Cancel"));
     cancelFooterBtn.onclick = () => closeModal();
-    const applyBtn = createEl("button", "anima-clothing-btn primary", t("Confirm & Apply"));
+    const applyBtn = createEl("button", "anima-pose-btn primary", t("Confirm & Apply"));
     applyBtn.onclick = () => applySelectionAndClose();
 
     footerBtns.appendChild(cancelFooterBtn);
@@ -1163,7 +1199,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
 
     function renderSidebar() {
         sidebar.innerHTML = "";
-        const clearFiltersBtn = createEl("button", "anima-clothing-clear-filters-btn");
+        const clearFiltersBtn = createEl("button", "anima-pose-clear-filters-btn");
         clearFiltersBtn.type = "button";
         clearFiltersBtn.innerHTML = `
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round">
@@ -1181,7 +1217,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
         const collectionsContent = createEl("div");
         collectionsContent.style.cssText = collectionsCollapsed ? "display: none;" : "display: flex; flex-direction: column;";
         if (!collectionsCollapsed) {
-            const allItem = sidebarItem(t("All Clothing"), activeFilters.collection === "all", clothingData.length);
+            const allItem = sidebarItem(t("All Poses"), activeFilters.collection === "all", poseData.length);
             allItem.onclick = () => switchCollection("all");
             collectionsContent.appendChild(allItem);
 
@@ -1240,7 +1276,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
 
         sidebar.appendChild(sectionTitle(t("Categories")));
         CATEGORY_LIST.forEach(category => {
-            const row = createEl("label", "anima-clothing-check-row");
+            const row = createEl("label", "anima-pose-check-row");
             row.innerHTML = `
                 <input type="checkbox" ${activeFilters.categories.has(category) ? "checked" : ""}>
                 <span>${escapeHtml(getCategoryLabel(category, displayLang))}</span>
@@ -1258,9 +1294,9 @@ async function openClothingSelectorModal(node, tagsWidget) {
 
         sidebar.appendChild(sectionTitle(t("Traits")));
         allTraits.forEach(trait => {
-            const zh = getTraitZh(trait.name, clothingData);
+            const zh = getTraitZh(trait.name, poseData);
             const label = displayLang === "bilingual" && zh ? `${trait.name} (${zh})` : trait.name;
-            const row = createEl("label", "anima-clothing-check-row");
+            const row = createEl("label", "anima-pose-check-row");
             row.innerHTML = `
                 <input type="checkbox" ${activeFilters.traits.has(trait.name) ? "checked" : ""}>
                 <span style="min-width:0;">${escapeHtml(label)} <span style="color:#71717a;">${trait.count}</span></span>
@@ -1283,14 +1319,14 @@ async function openClothingSelectorModal(node, tagsWidget) {
     }
 
     function collectionsSectionHeader() {
-        const header = createEl("div", "anima-clothing-section-header foldable");
-        const title = createEl("span", "anima-clothing-section-title", t("Collections"));
-        const spacer = createEl("span", "anima-clothing-section-spacer");
-        const addBtn = createEl("button", "anima-clothing-section-icon-btn");
+        const header = createEl("div", "anima-pose-section-header foldable");
+        const title = createEl("span", "anima-pose-section-title", t("Collections"));
+        const spacer = createEl("span", "anima-pose-section-spacer");
+        const addBtn = createEl("button", "anima-pose-section-icon-btn");
         addBtn.type = "button";
         addBtn.title = t("Create Group");
         addBtn.innerHTML = "+";
-        const arrow = createEl("span", `anima-clothing-section-arrow${collectionsCollapsed ? " collapsed" : ""}`);
+        const arrow = createEl("span", `anima-pose-section-arrow${collectionsCollapsed ? " collapsed" : ""}`);
         arrow.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
 
         addBtn.onclick = (event) => {
@@ -1322,11 +1358,11 @@ async function openClothingSelectorModal(node, tagsWidget) {
     }
 
     function sectionTitle(label) {
-        return createEl("div", "anima-clothing-section-header", label);
+        return createEl("div", "anima-pose-section-header", label);
     }
 
     function sidebarItem(label, active, count) {
-        const row = createEl("div", `anima-clothing-sidebar-item${active ? " active" : ""}`);
+        const row = createEl("div", `anima-pose-sidebar-item${active ? " active" : ""}`);
         const nameSpan = createEl("span", null, label);
         nameSpan.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;";
         const countSpan = createEl("span", null, String(count || 0));
@@ -1352,7 +1388,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
     }
 
     function updateClearFiltersButtonState() {
-        const clearFiltersBtn = sidebar.querySelector(".anima-clothing-clear-filters-btn");
+        const clearFiltersBtn = sidebar.querySelector(".anima-pose-clear-filters-btn");
         if (clearFiltersBtn) {
             clearFiltersBtn.disabled = !hasActiveSidebarFilters();
         }
@@ -1373,12 +1409,29 @@ async function openClothingSelectorModal(node, tagsWidget) {
     function triggerFilter() {
         const query = searchInput.value.toLowerCase().trim();
         const aliases = {
-            "丝袜": ["stockings", "thighhighs", "pantyhose", "kneehighs", "socks", "legwear"],
-            "袜子": ["stockings", "thighhighs", "pantyhose", "kneehighs", "socks"],
-            "高跟鞋": ["high heels", "heels", "pumps", "stiletto"],
-            "手套": ["gloves", "mittens"],
-            "裙": ["dress", "skirt", "gown", "礼服", "裙装"],
-            "内衣": ["lingerie", "panties", "underwear", "bra"],
+            "举手": ["arms up", "raised arms", "hands above head", "raised"],
+            "抬手": ["arms up", "raised arms", "hand up", "raised"],
+            "叉腰": ["hand on hip", "hands on hips", "akimbo"],
+            "坐姿": ["sitting", "sit", "seiza", "knees"],
+            "坐着": ["sitting", "sit"],
+            "躺姿": ["lying", "on back", "on side"],
+            "躺着": ["lying", "on back", "on side"],
+            "趴着": ["prone", "on stomach", "face down"],
+            "站姿": ["standing", "stand"],
+            "站立": ["standing", "stand"],
+            "蹲姿": ["squatting", "crouching", "kneeling"],
+            "跪姿": ["kneeling", "on knees"],
+            "挥手": ["waving", "wave"],
+            "比心": ["heart hands", "heart gesture"],
+            "胜利": ["peace sign", "v sign", "peace"],
+            "指向": ["pointing", "pointing at viewer"],
+            "持物": ["holding", "carrying", "carry"],
+            "拿着": ["holding", "carrying"],
+            "拥抱": ["hug", "hugging", "cuddle"],
+            "互动": ["duo", "interaction", "hugging"],
+            "整理": ["adjusting", "fixing", "arranging"],
+            "头发": ["hair", "adjusting hair", "hand in hair"],
+            "衣服": ["clothes", "dress", "adjusting clothes"],
         };
         let queryList = query ? [query] : [];
         for (const [key, values] of Object.entries(aliases)) {
@@ -1388,8 +1441,8 @@ async function openClothingSelectorModal(node, tagsWidget) {
         let items = [];
         let customItems = [];
         if (showSelectedOnly) {
-            customItems = favoriteItems.filter(item => item.isCustom && selectedClothing.has(getItemKey(item)));
-            items = clothingData.filter(item => selectedClothing.has(getItemKey(item)));
+            customItems = favoriteItems.filter(item => item.isCustom && selectedPose.has(getItemKey(item)));
+            items = poseData.filter(item => selectedPose.has(getItemKey(item)));
         } else {
             const groupIds = new Set();
             if (activeFilters.collection !== "all") {
@@ -1400,7 +1453,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
                 });
             }
 
-            items = clothingData.filter(item => {
+            items = poseData.filter(item => {
                 if (activeFilters.collection !== "all" && !groupIds.has(String(item.id))) return false;
 
                 if (queryList.length > 0) {
@@ -1473,7 +1526,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
         const total = filteredData.length;
         const start = total === 0 ? 0 : (currentPage - 1) * 48 + 1;
         const end = Math.min(currentPage * 48, total);
-        pageStats.innerText = t("Total {total} clothing items | Showing {start}-{end}", { total, start, end });
+        pageStats.innerText = t("Total {total} poses | Showing {start}-{end}", { total, start, end });
         pageInput.value = String(currentPage);
         totalPagesLabel.innerText = `/ ${totalPages}`;
         firstBtn.disabled = currentPage <= 1;
@@ -1505,7 +1558,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
             empty.style.cssText = "grid-column:1/-1; padding:70px 20px; text-align:center; color:#a1a1aa;";
             empty.innerHTML = `
                 <div style="font-size:38px;font-weight:900;color:${THEME.accentText};margin-bottom:12px;">0</div>
-                <div style="font-size:16px;font-weight:800;color:#fff;">${escapeHtml(t("No matching clothing items found"))}</div>
+                <div style="font-size:16px;font-weight:800;color:#fff;">${escapeHtml(t("No matching poses found"))}</div>
                 <div style="font-size:13px;margin-top:8px;">${escapeHtml(t("Try another search or clear filters."))}</div>
             `;
             listContainer.appendChild(empty);
@@ -1530,8 +1583,8 @@ async function openClothingSelectorModal(node, tagsWidget) {
     }
 
     function createCustomPlaceholderCard() {
-        const card = createEl("article", "anima-clothing-create-card");
-        const content = createEl("div", "anima-clothing-create-card-content");
+        const card = createEl("article", "anima-pose-create-card");
+        const content = createEl("div", "anima-pose-create-card-content");
         content.innerHTML = `
             <div style="font-size:46px;line-height:1;font-weight:300;">+</div>
             <div style="font-size:13.5px;font-weight:800;">${escapeHtml(t("Create Custom Item"))}</div>
@@ -1562,18 +1615,18 @@ async function openClothingSelectorModal(node, tagsWidget) {
 
     function createCard(item) {
         const key = getItemKey(item);
-        const isSelected = selectedClothing.has(key);
+        const isSelected = selectedPose.has(key);
         const isFavorite = !item.isCustom && favoriteSet.has(String(item.id));
         const favInfo = item.isCustom ? item : favoriteMap.get(String(item.id));
         const nickname = favInfo?.nickname || "";
 
-        const card = createEl("article", `anima-clothing-card${isSelected ? " selected" : ""}`);
+        const card = createEl("article", `anima-pose-card${isSelected ? " selected" : ""}`);
         card.dataset.key = key;
 
-        const clip = createEl("div", "anima-clothing-card-clip");
+        const clip = createEl("div", "anima-pose-card-clip");
         card.appendChild(clip);
 
-        const placeholder = createEl("div", "anima-clothing-placeholder");
+        const placeholder = createEl("div", "anima-pose-placeholder");
         placeholder.innerText = item.isCustom ? "T" : (formatDisplayName(item, displayLang).trim().charAt(0).toUpperCase() || "?");
         clip.appendChild(placeholder);
 
@@ -1596,8 +1649,8 @@ async function openClothingSelectorModal(node, tagsWidget) {
                 img.style.opacity = "1";
             } else {
                 img.dataset.lazySrc = imgUrl;
-                loader = createEl("div", "anima-clothing-shimmer");
-                const spinner = createEl("div", "anima-clothing-spinner");
+                loader = createEl("div", "anima-pose-shimmer");
+                const spinner = createEl("div", "anima-pose-spinner");
                 loader.appendChild(spinner);
                 clip.appendChild(loader);
             }
@@ -1616,7 +1669,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
             imageObserver.observe(img);
         }
 
-        const selectedMark = createEl("div", "anima-clothing-selected-mark");
+        const selectedMark = createEl("div", "anima-pose-selected-mark");
         selectedMark.innerHTML = isSelected ? checkIcon() : "";
         card.appendChild(selectedMark);
 
@@ -1626,7 +1679,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
                 event.stopPropagation();
                 if (!confirm(t("Are you sure you want to delete this custom item?"))) return;
                 favoriteItems = favoriteItems.filter(existing => existing.name !== item.name);
-                selectedClothing.delete(key);
+                selectedPose.delete(key);
                 await saveFavorites();
                 renderSidebar();
                 triggerFilter();
@@ -1679,13 +1732,13 @@ async function openClothingSelectorModal(node, tagsWidget) {
         };
         card.appendChild(groupBtn);
 
-        const mask = createEl("div", "anima-clothing-card-mask");
+        const mask = createEl("div", "anima-pose-card-mask");
         clip.appendChild(mask);
 
-        const tagsOverlay = createEl("div", "anima-clothing-tags-overlay");
+        const tagsOverlay = createEl("div", "anima-pose-tags-overlay");
         const promptTags = splitPromptTokens(item.isCustom ? item.customContent : item.tags);
         const promptTagsZh = splitPromptTokens(item.tags_zh);
-        const titleBtn = createEl("button", "anima-clothing-tags-title");
+        const titleBtn = createEl("button", "anima-pose-tags-title");
         titleBtn.innerHTML = `
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(t("Prompt Tags"))} · ${promptTags.length}</span>
             <span style="font-size:10px;color:#f9a8d4;flex:0 0 auto;">${escapeHtml(t("Copy"))}</span>
@@ -1697,11 +1750,11 @@ async function openClothingSelectorModal(node, tagsWidget) {
         };
         tagsOverlay.appendChild(titleBtn);
 
-        const tagsList = createEl("div", "anima-clothing-tags-list");
+        const tagsList = createEl("div", "anima-pose-tags-list");
         promptTags.forEach((tag, index) => {
             const zh = promptTagsZh[index] || "";
             const displayTag = displayLang === "bilingual" && zh ? `${tag} (${zh})` : tag;
-            const pill = createEl("span", "anima-clothing-tag-pill", displayTag);
+            const pill = createEl("span", "anima-pose-tag-pill", displayTag);
             pill.title = displayTag;
             pill.onclick = (event) => {
                 event.stopPropagation();
@@ -1712,12 +1765,12 @@ async function openClothingSelectorModal(node, tagsWidget) {
         tagsOverlay.appendChild(tagsList);
         clip.appendChild(tagsOverlay);
 
-        const info = createEl("div", "anima-clothing-card-info");
-        const titleEl = createEl("div", "anima-clothing-card-title");
+        const info = createEl("div", "anima-pose-card-info");
+        const titleEl = createEl("div", "anima-pose-card-title");
         const displayName = formatDisplayName(item, displayLang);
         titleEl.innerText = displayName;
         titleEl.title = item.isCustom ? item.customContent || "" : `${item.name_zh || ""}${item.name_zh ? " / " : ""}${item.name || ""}`;
-        const subEl = createEl("div", "anima-clothing-card-sub");
+        const subEl = createEl("div", "anima-pose-card-sub");
         if (item.isCustom) {
             subEl.innerText = t("Custom");
         } else if (displayLang === "bilingual" && item.name_zh) {
@@ -1728,7 +1781,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
         }
 
         if (nickname && !item.isCustom) {
-            const note = createEl("div", "anima-clothing-card-sub", nickname);
+            const note = createEl("div", "anima-pose-card-sub", nickname);
             note.style.color = THEME.accentText;
             info.appendChild(titleEl);
             info.appendChild(note);
@@ -1740,9 +1793,9 @@ async function openClothingSelectorModal(node, tagsWidget) {
         clip.appendChild(info);
 
         card.onclick = () => {
-            if (selectedClothing.has(key)) selectedClothing.delete(key);
-            else selectedClothing.add(key);
-            updateCardSelection(card, selectedClothing.has(key));
+            if (selectedPose.has(key)) selectedPose.delete(key);
+            else selectedPose.add(key);
+            updateCardSelection(card, selectedPose.has(key));
             updateCountLabel();
         };
 
@@ -1751,18 +1804,18 @@ async function openClothingSelectorModal(node, tagsWidget) {
 
     function updateCardSelection(card, selected) {
         card.classList.toggle("selected", selected);
-        const mark = card.querySelector(".anima-clothing-selected-mark");
+        const mark = card.querySelector(".anima-pose-selected-mark");
         if (mark) mark.innerHTML = selected ? checkIcon() : "";
     }
 
     function badge(text) {
-        const el = createEl("span", "anima-clothing-badge", text);
+        const el = createEl("span", "anima-pose-badge", text);
         el.title = text;
         return el;
     }
 
     function iconButton(top, html, titleText) {
-        const btn = createEl("button", "anima-clothing-icon-btn");
+        const btn = createEl("button", "anima-pose-icon-btn");
         btn.style.top = `${top}px`;
         btn.innerHTML = html;
         btn.title = titleText;
@@ -1788,11 +1841,11 @@ async function openClothingSelectorModal(node, tagsWidget) {
     }
 
     function openGroupSelectPopover(x, y, item) {
-        const existing = document.getElementById("anima-clothing-group-popover");
+        const existing = document.getElementById("anima-pose-group-popover");
         if (existing) existing.remove();
 
-        const popover = createEl("div", "anima-clothing-popover");
-        popover.id = "anima-clothing-group-popover";
+        const popover = createEl("div", "anima-pose-popover");
+        popover.id = "anima-pose-group-popover";
         popover.style.left = `${x}px`;
         popover.style.top = `${y + 8}px`;
         popover.style.transform = "translateX(-50%)";
@@ -1843,7 +1896,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
         const content = dialog.firstChild;
         const titleNode = createEl("div", null, titleText);
         titleNode.style.cssText = "font-size:16px;font-weight:800;color:#fff;";
-        const input = createEl("input", "anima-clothing-input");
+        const input = createEl("input", "anima-pose-input");
         input.type = "text";
         input.value = defaultValue || "";
         input.placeholder = placeholderText;
@@ -1869,10 +1922,10 @@ async function openClothingSelectorModal(node, tagsWidget) {
         const content = dialog.firstChild;
         const titleNode = createEl("div", null, t("Create Custom Item"));
         titleNode.style.cssText = "font-size:16px;font-weight:800;color:#fff;";
-        const titleInput = createEl("input", "anima-clothing-input");
+        const titleInput = createEl("input", "anima-pose-input");
         titleInput.type = "text";
         titleInput.placeholder = t("Item Title (e.g. My Style A)...");
-        const contentInput = createEl("textarea", "anima-clothing-input");
+        const contentInput = createEl("textarea", "anima-pose-input");
         contentInput.placeholder = t("Enter prompt tags (e.g. masterpiece, highly detailed)...");
         contentInput.rows = 4;
         contentInput.style.cssText += "resize:vertical;font-family:monospace;";
@@ -1917,7 +1970,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
             flex-direction: column;
             gap: 14px;
             box-shadow: 0 18px 45px rgba(0,0,0,0.52);
-            animation: animaClothingFadeIn 0.18s ease forwards;
+            animation: animaPoseFadeIn 0.18s ease forwards;
         `;
         dialog.appendChild(content);
         dialog.onclick = event => {
@@ -1929,9 +1982,9 @@ async function openClothingSelectorModal(node, tagsWidget) {
     function modalButtons(dialog, onConfirm, confirmText = t("OK")) {
         const row = createEl("div");
         row.style.cssText = "display:flex;justify-content:flex-end;gap:10px;margin-top:6px;";
-        const cancel = createEl("button", "anima-clothing-btn", t("Cancel"));
+        const cancel = createEl("button", "anima-pose-btn", t("Cancel"));
         cancel.onclick = () => dialog.remove();
-        const confirmBtn = createEl("button", "anima-clothing-btn primary", confirmText);
+        const confirmBtn = createEl("button", "anima-pose-btn primary", confirmText);
         confirmBtn.onclick = async () => {
             confirmBtn.disabled = true;
             cancel.disabled = true;
@@ -1950,7 +2003,7 @@ async function openClothingSelectorModal(node, tagsWidget) {
 
     function buildSelectedText() {
         const tags = [];
-        selectedClothing.forEach(key => {
+        selectedPose.forEach(key => {
             if (key.startsWith("custom:")) {
                 const item = favoriteItems.find(fav => fav.isCustom && getItemKey(fav) === key);
                 splitPromptTokens(item?.customContent || "").forEach(tag => tags.push(tag));
@@ -1977,12 +2030,12 @@ async function openClothingSelectorModal(node, tagsWidget) {
     }
 
     function updateCountLabel() {
-        countLabel.innerHTML = `${checkIcon()} <span>${t("Selected: {count} clothing items", { count: selectedClothing.size })}</span>`;
+        countLabel.innerHTML = `${checkIcon()} <span>${t("Selected: {count} poses", { count: selectedPose.size })}</span>`;
     }
 
     function closeModal() {
         imageObserver.disconnect();
-        document.getElementById("anima-clothing-group-popover")?.remove();
+        document.getElementById("anima-pose-group-popover")?.remove();
         overlay.remove();
         styleSheet.remove();
     }
@@ -2053,3 +2106,6 @@ async function openClothingSelectorModal(node, tagsWidget) {
     updateCountLabel();
     searchInput.focus();
 }
+
+
+

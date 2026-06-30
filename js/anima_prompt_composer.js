@@ -1,15 +1,17 @@
 import { app } from "../../scripts/app.js";
 import { t } from "./i18n.js";
 
-const SECTIONS = ["artist", "character", "clothing"];
+const SECTIONS = ["artist", "character", "clothing", "background", "pose"];
 const SECTION_META = {
     artist: { color: "#38bdf8", labelKey: "Artists" },
     character: { color: "#f472b6", labelKey: "Characters" },
     clothing: { color: "#a78bfa", labelKey: "Clothing" },
+    background: { color: "#22c55e", labelKey: "Background" },
+    pose: { color: "#f59e0b", labelKey: "Pose" },
 };
 const THUMB_W = 60;
 const THUMB_H = 80;
-const TEXT_PREVIEW_H = 54;
+const SELECTION_PROPERTY = "anima_prompt_composer_selection";
 
 app.registerExtension({
     name: "AnimaPromptComposer.extension",
@@ -35,8 +37,12 @@ app.registerExtension({
             origOnExecuted?.apply(this, arguments);
             const payload = extractComposerPayload(message);
             if (payload && typeof payload === "object") {
-                this._animaComposerLastSelected = payload;
+                setComposerSelection(this, payload);
                 this._animaComposerHasRun = true;
+                const resolvedPrompt = extractResolvedPrompt(message, payload);
+                if (resolvedPrompt !== null) {
+                    setWidgetValue(this, "resolved_prompt", resolvedPrompt);
+                }
                 updateComposerLayout(this);
             }
         };
@@ -60,6 +66,7 @@ app.registerExtension({
 function setupComposerNode(node) {
     if (!node) return;
     node._animaComposerImages = node._animaComposerImages || new Map();
+    hydrateComposerResolvedState(node);
     hideInternalWidgets(node);
     ensureComposerControls(node);
     removePreviewWidget(node);
@@ -210,34 +217,6 @@ function updateDomPreviewWidget(node) {
 
     if (isPreviewCollapsed(node) || entries.length === 0) return;
 
-    const promptText = buildPromptPreviewText(node);
-    const promptPreview = document.createElement("div");
-    promptPreview.style.cssText = `
-        margin-top: 10px;
-        padding: 8px 9px;
-        border-radius: 9px;
-        background: rgba(0,0,0,0.22);
-        border: 1px solid rgba(255,255,255,0.07);
-        box-sizing: border-box;
-        color: #dbeafe;
-        font-size: 11px;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        line-height: 1.35;
-        height: ${TEXT_PREVIEW_H}px;
-        overflow: hidden;
-        word-break: break-word;
-        cursor: text;
-        pointer-events: auto;
-        user-select: text;
-        -webkit-user-select: text;
-    `;
-    promptPreview.title = promptText;
-    promptPreview.textContent = promptText;
-    promptPreview.addEventListener("pointerdown", event => event.stopPropagation());
-    promptPreview.addEventListener("mousedown", event => event.stopPropagation());
-    promptPreview.addEventListener("click", event => event.stopPropagation());
-    el.appendChild(promptPreview);
-
     const grid = document.createElement("div");
     grid.style.cssText = `
         display: grid;
@@ -314,6 +293,86 @@ function extractComposerPayload(message) {
     return null;
 }
 
+function extractResolvedPrompt(message, payload) {
+    const direct = message?.resolved_prompt;
+    if (Array.isArray(direct)) return extractPromptText(direct[0] || "");
+    if (typeof direct === "string") return extractPromptText(direct);
+
+    const outputDirect = message?.output?.resolved_prompt;
+    if (Array.isArray(outputDirect)) return extractPromptText(outputDirect[0] || "");
+    if (typeof outputDirect === "string") return extractPromptText(outputDirect);
+
+    const nested = message?.ui?.resolved_prompt;
+    if (Array.isArray(nested)) return extractPromptText(nested[0] || "");
+    if (typeof nested === "string") return extractPromptText(nested);
+
+    return payload && Object.prototype.hasOwnProperty.call(payload, "_resolved_prompt")
+        ? extractPromptText(payload._resolved_prompt)
+        : null;
+}
+
+function extractPromptText(value) {
+    const text = String(value || "");
+    const trimmed = text.trim();
+    if (!trimmed.startsWith("{")) return text;
+    try {
+        const payload = JSON.parse(trimmed);
+        if (payload && typeof payload === "object" && typeof payload._resolved_prompt === "string") {
+            return payload._resolved_prompt;
+        }
+    } catch (_) {}
+    return text;
+}
+
+function isComposerSelectionPayload(payload) {
+    if (!payload || typeof payload !== "object") return false;
+    return SECTIONS.some(section => Array.isArray(payload[section]))
+        || typeof payload._resolved_prompt === "string";
+}
+
+function parseComposerSelection(value) {
+    if (!value) return null;
+    if (typeof value === "object") {
+        return isComposerSelectionPayload(value) ? value : null;
+    }
+
+    const text = String(value).trim();
+    if (!text.startsWith("{")) return null;
+    try {
+        const payload = JSON.parse(text);
+        return isComposerSelectionPayload(payload) ? payload : null;
+    } catch (_) {}
+    return null;
+}
+
+function setComposerSelection(node, payload) {
+    if (!node) return false;
+    const selection = parseComposerSelection(payload);
+    if (!selection) return false;
+    node._animaComposerLastSelected = selection;
+    node.properties = node.properties || {};
+    node.properties[SELECTION_PROPERTY] = selection;
+    return true;
+}
+
+function hydrateComposerResolvedState(node) {
+    const propertySelection = parseComposerSelection(node?.properties?.[SELECTION_PROPERTY]);
+    if (propertySelection) {
+        setComposerSelection(node, propertySelection);
+    }
+
+    const widget = getWidget(node, "resolved_prompt");
+    if (!widget) return;
+    const widgetSelection = parseComposerSelection(widget.value);
+    if (widgetSelection) {
+        setComposerSelection(node, widgetSelection);
+    }
+    const resolvedText = extractPromptText(widget.value);
+    if (resolvedText !== widget.value) {
+        setWidgetValue(node, "resolved_prompt", resolvedText);
+    }
+}
+
 function getWidgetBottom(node) {
     if (!node?.widgets?.length) return 0;
     let bottom = 0;
@@ -327,17 +386,19 @@ function getWidgetBottom(node) {
 }
 
 function hideInternalWidgets(node) {
-    const widget = getWidget(node, "preview_collapsed");
-    if (!widget) return;
-    widget.type = "hidden";
-    widget.options = { ...(widget.options || {}), hidden: true };
-    widget.serialize = true;
-    widget.disabled = true;
-    widget.draw = () => {};
-    widget.computeSize = () => [0, 0];
-    widget.computedHeight = 0;
-    widget.y = -100000;
-    hideWidgetDom(widget);
+    ["preview_collapsed"].forEach(name => {
+        const widget = getWidget(node, name);
+        if (!widget) return;
+        widget.type = "hidden";
+        widget.options = { ...(widget.options || {}), hidden: true };
+        widget.serialize = true;
+        widget.disabled = true;
+        widget.draw = () => {};
+        widget.computeSize = () => [0, 0];
+        widget.computedHeight = 0;
+        widget.y = -100000;
+        hideWidgetDom(widget);
+    });
 }
 
 function hideWidgetDom(widget) {
@@ -393,53 +454,12 @@ function getPreviewHeight(node, width = 340) {
     const rows = Math.ceil(entries.length / columns);
     const rowHeight = THUMB_H + 22;
     const rowGaps = Math.max(0, rows - 1) * 10;
-    return Math.min(840, 24 + 42 + TEXT_PREVIEW_H + 12 + rows * rowHeight + rowGaps);
+    return 24 + 42 + rows * rowHeight + rowGaps;
 }
 
 function flattenSelected(selected) {
     if (!selected) return [];
     return SECTIONS.flatMap(section => (selected?.[section] || []).map(entry => ({ ...entry, section })));
-}
-
-function buildPromptPreviewText(node) {
-    const selected = node?._animaComposerLastSelected;
-    if (!selected) return "";
-
-    const characterDetail = getWidget(node, "character_detail")?.value || "trigger";
-    const parts = [];
-    const seen = new Set();
-
-    for (const section of SECTIONS) {
-        for (const entry of selected?.[section] || []) {
-            for (const part of getEntryPromptParts(entry, section, characterDetail)) {
-                const key = part.toLowerCase();
-                if (!key || seen.has(key)) continue;
-                seen.add(key);
-                parts.push(part);
-            }
-        }
-    }
-
-    return parts.length > 0 ? `${parts.join(", ")}, ` : "";
-}
-
-function getEntryPromptParts(entry, section, characterDetail) {
-    if (section === "character") {
-        const parts = splitPromptTokens(entry?.trigger_parts);
-        if (characterDetail === "trigger_tags") {
-            parts.push(...splitPromptTokens(entry?.tag_parts));
-        }
-        return parts;
-    }
-    return splitPromptTokens(entry?.prompt_parts);
-}
-
-function splitPromptTokens(value) {
-    if (Array.isArray(value)) return value.flatMap(item => splitPromptTokens(item));
-    return String(value || "")
-        .split(",")
-        .map(part => part.replace("_raw_:", "").trim())
-        .filter(Boolean);
 }
 
 function drawComposerPreviewOnNode(ctx, node) {
@@ -479,19 +499,8 @@ function drawComposerPreview(ctx, node, width, y, height) {
         return;
     }
 
-    const promptY = y + 36;
-    roundedRect(ctx, x + 14, promptY, panelWidth - 28, TEXT_PREVIEW_H, 8, "rgba(0,0,0,0.22)", "rgba(255,255,255,0.07)");
-    ctx.save();
-    ctx.beginPath();
-    roundedPath(ctx, x + 14, promptY, panelWidth - 28, TEXT_PREVIEW_H, 8);
-    ctx.clip();
-    ctx.fillStyle = "#dbeafe";
-    ctx.font = "11px monospace";
-    drawWrappedText(ctx, buildPromptPreviewText(node), x + 22, promptY + 17, panelWidth - 44, 13, 3);
-    ctx.restore();
-
     const columns = Math.max(3, Math.floor((panelWidth - 28) / (THUMB_W + 16)));
-    const gridY = promptY + TEXT_PREVIEW_H + 12;
+    const gridY = y + 42;
     entries.forEach((entry, index) => {
         const col = index % columns;
         const row = Math.floor(index / columns);
@@ -521,33 +530,6 @@ function drawThumb(ctx, node, entry, x, y, width, height) {
     ctx.fillStyle = "#d1d5db";
     ctx.font = "10px sans-serif";
     ctx.fillText(t(SECTION_META[entry.section]?.labelKey || ""), x, y + height + 14);
-}
-
-function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
-    const value = String(text || "").replace(/\s+/g, " ").trim();
-    if (!value) return;
-
-    let line = "";
-    let drawn = 0;
-    const words = value.split(" ");
-
-    for (const word of words) {
-        const candidate = line ? `${line} ${word}` : word;
-        if (ctx.measureText(candidate).width <= maxWidth || !line) {
-            line = candidate;
-            continue;
-        }
-
-        ctx.fillText(line, x, y + drawn * lineHeight);
-        drawn += 1;
-        line = word;
-
-        if (drawn >= maxLines) return;
-    }
-
-    if (line && drawn < maxLines) {
-        ctx.fillText(line, x, y + drawn * lineHeight);
-    }
 }
 
 function getPreviewImage(node, url) {

@@ -183,9 +183,96 @@
       "0": { "name": "文本" }
     }
   },
+  "AnimaPoseTagSelector": {
+    "display_name": "Anima 姿势 Tag 选择器",
+    "description": "通过高品质 2:3 视觉预览网格，选择并输出多个姿势 Prompt Tag。",
+    "inputs": {
+      "pose_tags": {
+        "name": "姿势 Tag",
+        "tooltip": "选中的姿势提示词列表，以逗号隔开。"
+      },
+      "mode": {
+        "name": "拼接模式",
+        "tooltip": "选择追加（Append）到外部 Prompt 后面，或是完全覆盖（Override）。",
+        "values": {
+          "append": "拼接",
+          "override": "覆盖"
+        }
+      },
+      "opt_prompt": {
+        "name": "可选输入 Prompt",
+        "tooltip": "一个可选的外部输入 Prompt 文本插槽，以便与选择的姿势标签合并输出。"
+      }
+    },
+    "outputs": {
+      "0": { "name": "文本" }
+    }
+  },
+  "AnimaPoseTagSelectorPlus": {
+    "display_name": "Anima 姿势 Tag 选择器+",
+    "description": "姿势 Tag 选择器增强版，支持将姿势标签与下方的自定义提示词文本，通过指定的分隔符自动拼接输出。",
+    "inputs": {
+      "pose_tags": {
+        "name": "姿势 Tag",
+        "tooltip": "选中的姿势提示词列表，以逗号隔开。"
+      },
+      "extra_text": {
+        "name": "自定义文本",
+        "tooltip": "在姿势输入框下面的自定义提示词或文本内容。"
+      },
+      "separator": {
+        "name": "分隔符",
+        "tooltip": "自动拼接两段文本时的分隔符，默认为 ', '。"
+      }
+    },
+    "outputs": {
+      "0": { "name": "文本" }
+    }
+  },
+  "AnimaPromptPlus": {
+    "display_name": "Anima 提示词+",
+    "description": "将质量提示词、画师、角色、服装、姿势、背景和额外提示词分区编辑并统一拼接输出，每个 Tag 分区都可通过对应选择器按钮填充。",
+    "inputs": {
+      "quality_prompt": {
+        "name": "质量提示词",
+        "tooltip": "放在最前面的质量、风格或基础提示词。"
+      },
+      "artist_tags": {
+        "name": "画师 Tags",
+        "tooltip": "由画师选择器填充，也可以手动修改。输出时会统一整理为 @artist 格式。"
+      },
+      "character_tags": {
+        "name": "角色 Tags",
+        "tooltip": "由角色选择器填充，也可以手动修改。"
+      },
+      "clothing_tags": {
+        "name": "服装 Tags",
+        "tooltip": "由服装选择器填充，也可以手动修改。"
+      },
+      "pose_tags": {
+        "name": "姿势 Tags",
+        "tooltip": "由姿势选择器填充，也可以手动修改。"
+      },
+      "background_tags": {
+        "name": "背景 Tags",
+        "tooltip": "由背景选择器填充，也可以手动修改。"
+      },
+      "extra_prompt": {
+        "name": "额外拼接提示词",
+        "tooltip": "放在所有选择器 Tag 之后的额外提示词。"
+      },
+      "separator": {
+        "name": "分隔符",
+        "tooltip": "拼接清理后的提示词片段时使用的分隔符，默认为 ', '。"
+      }
+    },
+    "outputs": {
+      "0": { "name": "文本" }
+    }
+  },
   "AnimaPromptComposer": {
-    "display_name": "Anima 提示词整合选择器",
-    "description": "在工作流运行时，从内置完整数据范围中随机组合画师、角色与服装提示词，并输出字符串。",
+    "display_name": "Anima 提示词随机抽卡器",
+    "description": "在工作流运行时，从内置完整数据范围中随机抽取画师、角色、服装、背景与姿势提示词，并输出字符串。",
     "inputs": {
       "enable_artist": {
         "name": "启用画师",
@@ -198,6 +285,14 @@
       "enable_clothing": {
         "name": "启用服装",
         "tooltip": "关闭后会忽略服装候选池，输出中不会包含服装。"
+      },
+      "enable_background": {
+        "name": "启用背景",
+        "tooltip": "关闭后会忽略背景候选池，输出中不会包含背景。"
+      },
+      "enable_pose": {
+        "name": "启用姿势",
+        "tooltip": "关闭后会忽略姿势候选池，输出中不会包含姿势。"
       },
       "character_detail": {
         "name": "角色细节",
@@ -213,11 +308,15 @@
       },
       "artist_count": {
         "name": "画师数量",
-        "tooltip": "随机使用的画师数量。角色和服装启用时固定各随机 1 个。"
+        "tooltip": "随机使用的画师数量。角色、服装、背景和姿势启用时固定各随机 1 个。"
       },
       "preview_collapsed": {
         "name": "预览折叠状态",
         "tooltip": "用于保存可折叠预览状态的内部字段。"
+      },
+      "resolved_prompt": {
+        "name": "上次随机结果",
+        "tooltip": "保存该节点最近一次实际随机生成的最终提示词。执行时会自动更新，并写入工作流 metadata。"
       }
     },
     "outputs": {

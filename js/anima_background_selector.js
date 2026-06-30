@@ -2,6 +2,7 @@ import { app } from "../../scripts/app.js";
 import { t } from "./i18n.js";
 import { markImageLoaded, isImageLoaded } from "./anima_image_utils.js";
 import { createPromoLinks } from "./anima_promo_links.js";
+import { addSelectorActionRow, installSelectorExecutionSync } from "./anima_selector_random.js";
 import "./background_data.js";
 
 const THEME = {
@@ -75,37 +76,27 @@ app.registerExtension({
     name: "AnimaBackgroundTagSelector.extension",
 
     async beforeRegisterNodeDef(nodeType, nodeData) {
-        if (nodeData.name === "AnimaBackgroundTagSelector" || nodeData.name === "AnimaBackgroundTagSelectorPlus") {
+        if (nodeData.name === "AnimaBackgroundTagSelector" || nodeData.name === "AnimaBackgroundTagSelectorPlus" || nodeData.name === "AnimaPromptPlus") {
+            installSelectorExecutionSync(nodeType);
             const origOnCreated = nodeType.prototype.onNodeCreated;
             nodeType.prototype.onNodeCreated = function () {
                 origOnCreated?.apply(this, arguments);
 
                 const backgroundTagsWidget = this.widgets.find(w => w.name === "background_tags");
-                const btnWidget = this.addWidget("button", t("Open Background Selector"), null, async () => {
-                    if (!window.backgroundData) {
-                        alert(t("Anima background database is loading, please wait a few seconds..."));
-                        return;
-                    }
-                    await openBackgroundSelectorModal(this, backgroundTagsWidget);
+                if (!backgroundTagsWidget) return;
+                addSelectorActionRow(this, {
+                    section: "background",
+                    label: t("Open Background Selector"),
+                    accent: THEME.accent,
+                    accentText: THEME.accentText,
+                    onOpen: async () => {
+                        if (!window.backgroundData) {
+                            alert(t("Anima background database is loading, please wait a few seconds..."));
+                            return;
+                        }
+                        await openBackgroundSelectorModal(this, backgroundTagsWidget);
+                    },
                 });
-
-                if (btnWidget && btnWidget.el) {
-                    btnWidget.el.style.cssText += `
-                        border: 1px solid rgba(219, 39, 119, 0.4) !important;
-                        background: linear-gradient(135deg, rgba(219, 39, 119, 0.1), rgba(157, 23, 77, 0.15)) !important;
-                        color: #f472b6 !important;
-                        font-weight: 600 !important;
-                        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
-                    `;
-                    btnWidget.el.onmouseover = () => {
-                        btnWidget.el.style.boxShadow = "0 0 12px rgba(219, 39, 119, 0.35)";
-                        btnWidget.el.style.background = "linear-gradient(135deg, rgba(219, 39, 119, 0.25), rgba(157, 23, 77, 0.3))";
-                    };
-                    btnWidget.el.onmouseout = () => {
-                        btnWidget.el.style.boxShadow = "none";
-                        btnWidget.el.style.background = "linear-gradient(135deg, rgba(219, 39, 119, 0.1), rgba(157, 23, 77, 0.15))";
-                    };
-                }
             };
         }
     }

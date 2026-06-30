@@ -2,6 +2,7 @@ import { app } from "../../scripts/app.js";
 import { t } from "./i18n.js";
 import { markImageLoaded, isImageLoaded } from "./anima_image_utils.js";
 import { createPromoLinks } from "./anima_promo_links.js";
+import { addSelectorActionRow, installSelectorExecutionSync } from "./anima_selector_random.js";
 import "./character_data.js";
 
 let characterOfficialDataPromise = null;
@@ -33,42 +34,30 @@ app.registerExtension({
     name: "AnimaCharacterTagSelector.extension",
 
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
-        if (nodeData.name === "AnimaCharacterTagSelector" || nodeData.name === "AnimaCharacterTagSelectorPlus") {
+        if (nodeData.name === "AnimaCharacterTagSelector" || nodeData.name === "AnimaCharacterTagSelectorPlus" || nodeData.name === "AnimaPromptPlus") {
+            installSelectorExecutionSync(nodeType);
             const origOnCreated = nodeType.prototype.onNodeCreated;
             nodeType.prototype.onNodeCreated = function () {
                 origOnCreated?.apply(this, arguments);
 
                 // 找到 character_tags widget
                 const characterTagsWidget = this.widgets.find(w => w.name === "character_tags");
+                if (!characterTagsWidget) return;
                 
-                // 添加打开选择器的按钮，并注入极致 premium 设计的霓虹粉发光样式
-                const btnWidget = this.addWidget("button", t("Open Character Selector"), null, async () => {
-                    if (!window.characterData) {
-                        alert(t("Anima character database is loading, please wait a few seconds..."));
-                        return;
-                    }
-                    ensureCharacterOfficialData();
-                    await openCharacterSelectorModal(this, characterTagsWidget);
+                addSelectorActionRow(this, {
+                    section: "character",
+                    label: t("Open Character Selector"),
+                    accent: "#db2777",
+                    accentText: "#f472b6",
+                    onOpen: async () => {
+                        if (!window.characterData) {
+                            alert(t("Anima character database is loading, please wait a few seconds..."));
+                            return;
+                        }
+                        ensureCharacterOfficialData();
+                        await openCharacterSelectorModal(this, characterTagsWidget);
+                    },
                 });
-
-                // 给按钮增加精致边框与微动画
-                if (btnWidget && btnWidget.el) {
-                    btnWidget.el.style.cssText += `
-                        border: 1px solid rgba(219, 39, 119, 0.4) !important;
-                        background: linear-gradient(135deg, rgba(219, 39, 119, 0.1), rgba(157, 23, 77, 0.15)) !important;
-                        color: #f472b6 !important;
-                        font-weight: 600 !important;
-                        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
-                    `;
-                    btnWidget.el.onmouseover = () => {
-                        btnWidget.el.style.boxShadow = "0 0 12px rgba(219, 39, 119, 0.35)";
-                        btnWidget.el.style.background = "linear-gradient(135deg, rgba(219, 39, 119, 0.25), rgba(157, 23, 77, 0.3))";
-                    };
-                    btnWidget.el.onmouseout = () => {
-                        btnWidget.el.style.boxShadow = "none";
-                        btnWidget.el.style.background = "linear-gradient(135deg, rgba(219, 39, 119, 0.1), rgba(157, 23, 77, 0.15))";
-                    };
-                }
             };
         }
     }

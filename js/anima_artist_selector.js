@@ -2,46 +2,35 @@ import { app } from "../../scripts/app.js";
 import { t } from "./i18n.js";
 import { markImageLoaded, isImageLoaded } from "./anima_image_utils.js";
 import { createPromoLinks } from "./anima_promo_links.js";
+import { addSelectorActionRow, installSelectorExecutionSync } from "./anima_selector_random.js";
 
 app.registerExtension({
     name: "AnimaArtistTagSelector.extension",
 
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
-        if (nodeData.name === "AnimaArtistTagSelector" || nodeData.name === "AnimaArtistTagSelectorPlus") {
+        if (nodeData.name === "AnimaArtistTagSelector" || nodeData.name === "AnimaArtistTagSelectorPlus" || nodeData.name === "AnimaPromptPlus") {
+            installSelectorExecutionSync(nodeType);
             const origOnCreated = nodeType.prototype.onNodeCreated;
             nodeType.prototype.onNodeCreated = function () {
                 origOnCreated?.apply(this, arguments);
 
                 // 找到 artist_tags widget
                 const artistTagsWidget = this.widgets.find(w => w.name === "artist_tags");
+                if (!artistTagsWidget) return;
                 
-                // 添加打开选择器的按钮
-                const btnWidget = this.addWidget("button", t("Open Artist Selector"), null, async () => {
-                    if (!window.galleryData) {
-                        alert(t("Anima artist database is loading, please wait a few seconds..."));
-                        return;
-                    }
-                    await openArtistSelectorModal(this, artistTagsWidget);
+                addSelectorActionRow(this, {
+                    section: "artist",
+                    label: t("Open Artist Selector"),
+                    accent: "#0b8ce9",
+                    accentText: "#7dd3fc",
+                    onOpen: async () => {
+                        if (!window.galleryData) {
+                            alert(t("Anima artist database is loading, please wait a few seconds..."));
+                            return;
+                        }
+                        await openArtistSelectorModal(this, artistTagsWidget);
+                    },
                 });
-
-                // 给按钮增加精致边框与微动画 (经典蓝科技感美学)
-                if (btnWidget && btnWidget.el) {
-                    btnWidget.el.style.cssText += `
-                        border: 1px solid rgba(11, 140, 233, 0.4) !important;
-                        background: linear-gradient(135deg, rgba(11, 140, 233, 0.1), rgba(2, 86, 145, 0.15)) !important;
-                        color: #7dd3fc !important;
-                        font-weight: 600 !important;
-                        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
-                    `;
-                    btnWidget.el.onmouseover = () => {
-                        btnWidget.el.style.boxShadow = "0 0 12px rgba(11, 140, 233, 0.35)";
-                        btnWidget.el.style.background = "linear-gradient(135deg, rgba(11, 140, 233, 0.25), rgba(2, 86, 145, 0.3))";
-                    };
-                    btnWidget.el.onmouseout = () => {
-                        btnWidget.el.style.boxShadow = "none";
-                        btnWidget.el.style.background = "linear-gradient(135deg, rgba(11, 140, 233, 0.1), rgba(2, 86, 145, 0.15))";
-                    };
-                }
             };
         }
     }
