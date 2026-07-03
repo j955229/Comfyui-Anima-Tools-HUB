@@ -1516,6 +1516,88 @@ async def save_favorites_api(request):
         return web.json_response({"success": False, "error": str(e)}, status=500)
 
 
+MOOSHIE_ARTIST_MANIFEST_URL = "https://cdn.mooshieblob.com/20260425_anima_all_artists/indices/manifest.json"
+_mooshie_json_cache = {}
+_mooshie_json_cache_lock = threading.Lock()
+_mooshie_json_cache_ttl = 60 * 60
+
+def _fetch_public_json(url: str, timeout: int = 30):
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "ComfyUI-Anima-Tools/1.0 (+https://github.com/j955229/Comfyui-Anima-Tools-)",
+            "Accept": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        charset = resp.headers.get_content_charset() or "utf-8"
+        return json.loads(resp.read().decode(charset, errors="replace"))
+
+def _load_cached_public_json(cache_key: str, url: str, ttl: int = _mooshie_json_cache_ttl):
+    now = time.time()
+    with _mooshie_json_cache_lock:
+        cached = _mooshie_json_cache.get(cache_key)
+        if cached and now - cached.get("time", 0) < ttl:
+            return cached.get("data")
+
+    data = _fetch_public_json(url)
+    with _mooshie_json_cache_lock:
+        _mooshie_json_cache[cache_key] = {"time": now, "data": data}
+    return data
+
+def _get_mooshie_manifest():
+    return _load_cached_public_json("manifest", MOOSHIE_ARTIST_MANIFEST_URL)
+
+def _get_mooshie_indices_base(manifest: dict) -> str:
+    image_base_url = str(manifest.get("imageBaseUrl") or "https://cdn.mooshieblob.com").rstrip("/")
+    release_prefix = str(manifest.get("releasePrefix") or "20260425_anima_all_artists").strip("/")
+    return f"{image_base_url}/{release_prefix}/indices"
+
+@PromptServer.instance.routes.get("/anima-tools/artist/mooshie/manifest")
+async def get_mooshie_artist_manifest_api(request):
+    try:
+        return web.json_response(_get_mooshie_manifest())
+    except Exception as e:
+        print(f"[Anima Tools] Error fetching Mooshie artist manifest: {e}")
+        return web.json_response({"success": False, "error": str(e)}, status=502)
+
+@PromptServer.instance.routes.get("/anima-tools/artist/mooshie/search")
+async def get_mooshie_artist_search_api(request):
+    try:
+        manifest = _get_mooshie_manifest()
+        search_path = str((manifest.get("searchIndex") or {}).get("path") or "search.json").lstrip("/")
+        url = f"{_get_mooshie_indices_base(manifest)}/{search_path}"
+        data = _load_cached_public_json(f"search:{search_path}", url)
+        return web.json_response(data)
+    except Exception as e:
+        print(f"[Anima Tools] Error fetching Mooshie artist search index: {e}")
+        return web.json_response({"success": False, "error": str(e)}, status=502)
+
+@PromptServer.instance.routes.get("/anima-tools/artist/mooshie/shard/{bucket}")
+async def get_mooshie_artist_shard_api(request):
+    bucket = str(request.match_info.get("bucket", "")).strip().lower()
+    if not re.fullmatch(r"[a-z0-9_]", bucket):
+        return web.json_response({"success": False, "error": "Invalid shard bucket"}, status=400)
+
+    try:
+        manifest = _get_mooshie_manifest()
+        shards = manifest.get("shards") if isinstance(manifest.get("shards"), list) else []
+        shard = next((item for item in shards if str(item.get("bucket", "")).lower() == bucket), None)
+        if not shard:
+            return web.json_response({"success": False, "error": "Shard not found"}, status=404)
+
+        shard_path = str(shard.get("path") or "").lstrip("/")
+        if not shard_path:
+            return web.json_response({"success": False, "error": "Shard path is missing"}, status=502)
+
+        url = f"{_get_mooshie_indices_base(manifest)}/{shard_path}"
+        data = _load_cached_public_json(f"shard:{bucket}:{shard_path}", url)
+        return web.json_response(data)
+    except Exception as e:
+        print(f"[Anima Tools] Error fetching Mooshie artist shard '{bucket}': {e}")
+        return web.json_response({"success": False, "error": str(e)}, status=502)
+
+
 ANIMADEX_CHARACTER_SEARCH_API = "https://animadex.net/api/characters/search"
 _animadex_character_cache = {}
 _animadex_character_cache_lock = threading.Lock()
@@ -2638,5 +2720,4 @@ async def lora_delete_local_api(request):
     except Exception as e:
         print(f"[Anima Tools] Delete Local API error: {e}")
         return web.json_response({"success": False, "error": str(e)}, status=500)
-
 

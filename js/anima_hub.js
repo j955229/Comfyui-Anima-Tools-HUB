@@ -962,7 +962,15 @@ function renderHub(root) {
     const grid = root.querySelector(".anima-hub-grid");
     grid.innerHTML = "";
     if (!allData.length) {
-        const message = HUB_STATE.viewMode === "favorites" ? "No favorites yet." : `${sectionDef.label} data is loading.`;
+        const sourceStatusText = section === "artist" ? getArtistSourceStatus(HUB_STATE.artistSource) : "";
+        let message = HUB_STATE.viewMode === "favorites" ? "No favorites yet." : `${sectionDef.label} data is loading.`;
+        if (section === "artist" && HUB_STATE.artistDataLoading) {
+            message = sourceStatusText || "Artist data is loading.";
+        } else if (section === "artist" && sourceStatusText.startsWith("Failed")) {
+            message = `Artist source load failed. ${sourceStatusText}`;
+        } else if (section === "artist" && sourceStatusText) {
+            message = sourceStatusText;
+        }
         grid.appendChild(createEl("div", "anima-hub-empty", message));
     } else if (!filtered.length) {
         grid.appendChild(createEl("div", "anima-hub-empty", "No matching items."));

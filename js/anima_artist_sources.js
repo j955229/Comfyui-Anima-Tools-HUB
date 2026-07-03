@@ -1,7 +1,8 @@
 import "./data.js";
 
 const ARTIST_SOURCE_STORAGE_KEY = "anima-hub-artist-source";
-const MOOSHIE_MANIFEST_URL = "https://cdn.mooshieblob.com/20260425_anima_all_artists/indices/manifest.json";
+const MOOSHIE_MANIFEST_URL = "/anima-tools/artist/mooshie/manifest";
+const MOOSHIE_SEARCH_URL = "/anima-tools/artist/mooshie/search";
 
 export const ARTIST_SOURCES = [
     { id: "theta", label: "Theta" },
@@ -55,20 +56,21 @@ function normalizeThetaArtist(item) {
     };
 }
 
-function mooshieIndexBaseUrl(manifest) {
-    return `${manifest.imageBaseUrl}/${manifest.releasePrefix}/indices`;
+function setMooshieFailureStatus(error) {
+    const message = error?.message || String(error || "unknown error");
+    artistSourceStatus.mooshie = `Failed: ${message}`;
 }
 
 async function loadMooshieManifest() {
     if (!mooshieManifestPromise) {
-        artistSourceStatus.mooshie = "Loading manifest";
+        artistSourceStatus.mooshie = "Loading manifest through ComfyUI";
         mooshieManifestPromise = fetch(MOOSHIE_MANIFEST_URL)
             .then(response => {
-                if (!response.ok) throw new Error(`Mooshie manifest HTTP ${response.status}`);
+                if (!response.ok) throw new Error(`manifest HTTP ${response.status}`);
                 return response.json();
             })
             .catch(error => {
-                artistSourceStatus.mooshie = "Failed to load";
+                setMooshieFailureStatus(error);
                 mooshieManifestPromise = null;
                 throw error;
             });
@@ -100,10 +102,9 @@ async function loadMooshieArtists() {
     if (!mooshieSearchPromise) {
         mooshieSearchPromise = loadMooshieManifest()
             .then(async manifest => {
-                artistSourceStatus.mooshie = "Loading search index";
-                const url = `${mooshieIndexBaseUrl(manifest)}/${manifest.searchIndex?.path || "search.json"}`;
-                const response = await fetch(url);
-                if (!response.ok) throw new Error(`Mooshie search HTTP ${response.status}`);
+                artistSourceStatus.mooshie = "Loading search index through ComfyUI";
+                const response = await fetch(MOOSHIE_SEARCH_URL);
+                if (!response.ok) throw new Error(`search HTTP ${response.status}`);
                 const rows = await response.json();
                 const artists = Array.isArray(rows) ? rows.map(item => normalizeMooshieArtist(item, manifest)) : [];
                 artistSourceStatus.mooshie = `${artists.length.toLocaleString()} artists`;
@@ -111,7 +112,7 @@ async function loadMooshieArtists() {
             })
             .catch(error => {
                 console.warn("[Anima Tools] Failed to load Mooshie artists", error);
-                artistSourceStatus.mooshie = "Failed to load";
+                setMooshieFailureStatus(error);
                 mooshieSearchPromise = null;
                 return [];
             });
@@ -160,7 +161,9 @@ function mergeArtists(thetaArtists, mooshieArtists) {
         });
     });
     const result = Array.from(merged.values()).sort((a, b) => (b.post_count || 0) - (a.post_count || 0));
-    artistSourceStatus.merged = `${result.length.toLocaleString()} artists`;
+    artistSourceStatus.merged = artistSourceStatus.mooshie.startsWith("Failed")
+        ? `${result.length.toLocaleString()} artists (Theta only; Mooshie failed)`
+        : `${result.length.toLocaleString()} artists`;
     return result;
 }
 
