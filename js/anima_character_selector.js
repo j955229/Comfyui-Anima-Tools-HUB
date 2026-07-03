@@ -3,6 +3,7 @@ import { t } from "./i18n.js";
 import { markImageLoaded, isImageLoaded } from "./anima_image_utils.js";
 import { createPromoLinks } from "./anima_promo_links.js";
 import { addSelectorActionRow, installSelectorExecutionSync } from "./anima_selector_random.js";
+import { openAnimaHub } from "./anima_hub.js";
 import "./character_data.js";
 
 let characterOfficialDataPromise = null;
@@ -55,7 +56,7 @@ app.registerExtension({
                             return;
                         }
                         ensureCharacterOfficialData();
-                        await openCharacterSelectorModal(this, characterTagsWidget);
+                        openAnimaHub("character", this);
                     },
                 });
             };

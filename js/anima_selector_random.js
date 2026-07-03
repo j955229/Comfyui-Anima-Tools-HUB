@@ -1,4 +1,5 @@
 import { t } from "./i18n.js";
+import { setWidgetValue } from "./anima_apply_tags.js";
 
 export const SELECTOR_RANDOM_PROPERTY = "anima_selector_random";
 
@@ -39,22 +40,6 @@ function refreshSelectorActionRows(node) {
     const rows = node?._animaSelectorActionRows;
     if (!rows || typeof rows !== "object") return;
     Object.values(rows).forEach(row => row?.__animaSelectorRefresh?.());
-}
-
-function getWidget(node, name) {
-    return node?.widgets?.find(widget => widget?.name === name);
-}
-
-function setWidgetValue(node, name, value) {
-    const widget = getWidget(node, name);
-    if (!widget) return;
-    const text = String(value ?? "");
-    widget.value = text;
-    if (widget.inputEl) {
-        widget.inputEl.value = text;
-        widget.inputEl.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-    widget.callback?.(text);
 }
 
 function extractSelectorTagsPayload(message) {

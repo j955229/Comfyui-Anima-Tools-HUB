@@ -3,6 +3,7 @@ import { t } from "./i18n.js";
 import { markImageLoaded, isImageLoaded } from "./anima_image_utils.js";
 import { createPromoLinks } from "./anima_promo_links.js";
 import { addSelectorActionRow, installSelectorExecutionSync } from "./anima_selector_random.js";
+import { openAnimaHub } from "./anima_hub.js";
 import "./background_data.js";
 
 const THEME = {
@@ -94,7 +95,7 @@ app.registerExtension({
                             alert(t("Anima background database is loading, please wait a few seconds..."));
                             return;
                         }
-                        await openBackgroundSelectorModal(this, backgroundTagsWidget);
+                        openAnimaHub("background", this);
                     },
                 });
             };
