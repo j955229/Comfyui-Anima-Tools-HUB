@@ -1,6 +1,6 @@
 [project]
 name = "comfyui-anima-tools"
-version = "3.2.1"
+version = "3.2.2"
 description = "专为 ComfyUI 设计的高性能、多维度二次元画师、角色、服装、随机提示词整合与 Anima LoRA 搜索下载加载套件"
 readme = "README.md"
 license = { text = "MIT" }

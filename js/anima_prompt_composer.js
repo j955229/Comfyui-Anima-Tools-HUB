@@ -11,6 +11,8 @@ const SECTION_META = {
 };
 const THUMB_W = 60;
 const THUMB_H = 80;
+const RESOLVED_PROMPT_WIDGET_HEIGHT = 74;
+const NORMAL_HEIGHT_FALLBACK = 360;
 const SELECTION_PROPERTY = "anima_prompt_composer_selection";
 
 app.registerExtension({
@@ -75,13 +77,15 @@ function setupComposerNode(node) {
 }
 
 function ensureComposerControls(node) {
+    if (node.widgets?.some(widget => widget?.__animaComposerToggle)) {
+        node._animaComposerControlsReady = true;
+        return;
+    }
     if (node._animaComposerControlsReady) return;
     node._animaComposerControlsReady = true;
 
     const toggleBtn = node.addWidget("button", getPreviewToggleLabel(node), null, () => {
-        const widget = getWidget(node, "preview_collapsed");
-        const current = Boolean(widget?.value);
-        setWidgetValue(node, "preview_collapsed", !current);
+        setWidgetValue(node, "preview_collapsed", !isPreviewCollapsed(node));
         toggleBtn.name = getPreviewToggleLabel(node);
         updateComposerLayout(node);
     });
@@ -91,6 +95,7 @@ function ensureComposerControls(node) {
 
 function updateComposerLayout(node) {
     hideInternalWidgets(node);
+    fixResolvedPromptWidget(node);
     removePreviewWidget(node);
     const toggle = node.widgets?.find(w => w.__animaComposerToggle);
     if (toggle) toggle.name = getPreviewToggleLabel(node);
@@ -100,16 +105,11 @@ function updateComposerLayout(node) {
     const width = Math.max(340, currentWidth, computedSize[0]);
     const previewHeight = getPreviewHeight(node, width);
     node._animaComposerPreviewHeight = previewHeight;
+    const normalHeight = getStableNormalHeight(node, computedSize);
+    node._animaComposerNormalHeight = normalHeight;
 
     updateDomPreviewWidget(node);
-
-    if (node._animaComposerDomPreviewWidget) {
-        node._animaComposerNormalHeight = getWidgetBottom(node) || computedSize[1];
-        setNodeSize(node, [width, computedSize[1]]);
-    } else {
-        node._animaComposerNormalHeight = getWidgetBottom(node) || computedSize[1];
-        setNodeSize(node, [width, node._animaComposerNormalHeight + previewHeight + 8]);
-    }
+    setNodeSize(node, [width, normalHeight + previewHeight + 8]);
     refreshCanvas(node);
 }
 
@@ -377,7 +377,7 @@ function getWidgetBottom(node) {
     if (!node?.widgets?.length) return 0;
     let bottom = 0;
     for (const widget of node.widgets) {
-        if (!widget || widget.name === "preview_collapsed" || widget.__animaComposerPreview) continue;
+        if (!widget || widget.name === "preview_collapsed" || widget.__animaComposerPreview || widget.__animaComposerDomPreview) continue;
         const y = Number.isFinite(widget.last_y) ? widget.last_y : widget.y;
         const h = Number.isFinite(widget.computedHeight) ? widget.computedHeight : 24;
         if (Number.isFinite(y) && y > -1000) bottom = Math.max(bottom, y + h);
@@ -385,11 +385,26 @@ function getWidgetBottom(node) {
     return bottom ? bottom + 10 : 0;
 }
 
+function getStableNormalHeight(node, computedSize) {
+    const widgetBottom = getWidgetBottom(node);
+    if (widgetBottom > 0) return widgetBottom;
+
+    const previous = Number(node?._animaComposerNormalHeight);
+    if (Number.isFinite(previous) && previous > 0 && previous < 900) return previous;
+
+    const computedHeight = Number(computedSize?.[1]);
+    if (Number.isFinite(computedHeight) && computedHeight > 0) {
+        return Math.min(Math.max(160, computedHeight), 520);
+    }
+    return NORMAL_HEIGHT_FALLBACK;
+}
+
 function hideInternalWidgets(node) {
     ["preview_collapsed"].forEach(name => {
         const widget = getWidget(node, name);
         if (!widget) return;
         widget.type = "hidden";
+        widget.hidden = true;
         widget.options = { ...(widget.options || {}), hidden: true };
         widget.serialize = true;
         widget.disabled = true;
@@ -397,8 +412,25 @@ function hideInternalWidgets(node) {
         widget.computeSize = () => [0, 0];
         widget.computedHeight = 0;
         widget.y = -100000;
+        widget.last_y = -100000;
         hideWidgetDom(widget);
     });
+}
+
+function fixResolvedPromptWidget(node) {
+    const widget = getWidget(node, "resolved_prompt");
+    if (!widget) return;
+    widget.computeSize = (width) => [width, RESOLVED_PROMPT_WIDGET_HEIGHT];
+    widget.computedHeight = RESOLVED_PROMPT_WIDGET_HEIGHT;
+    [widget.element, widget.inputEl, widget.el, widget.container].forEach(el => {
+        if (!el?.style) return;
+        el.style.setProperty("max-height", `${RESOLVED_PROMPT_WIDGET_HEIGHT}px`, "important");
+        el.style.setProperty("overflow-y", "auto", "important");
+    });
+    if (widget.inputEl?.style) {
+        widget.inputEl.style.setProperty("height", `${RESOLVED_PROMPT_WIDGET_HEIGHT - 12}px`, "important");
+        widget.inputEl.style.setProperty("resize", "vertical", "important");
+    }
 }
 
 function hideWidgetDom(widget) {
@@ -438,8 +470,15 @@ function setWidgetValue(node, name, value) {
     widget.callback?.(value);
 }
 
+function normalizeBoolean(value) {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value !== 0;
+    const text = String(value ?? "").trim().toLowerCase();
+    return text === "true" || text === "1" || text === "yes" || text === "on";
+}
+
 function isPreviewCollapsed(node) {
-    return Boolean(getWidget(node, "preview_collapsed")?.value);
+    return normalizeBoolean(getWidget(node, "preview_collapsed")?.value);
 }
 
 function getPreviewToggleLabel(node) {
