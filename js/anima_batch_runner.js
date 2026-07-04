@@ -307,23 +307,49 @@ function resolveTargetWidget(node, source) {
 function applyTaskToWorkflow(runnerNode, task) {
     const targetNode = findTargetNode(task.widgetName, runnerNode);
     if (!targetNode) {
-        throw new Error(`No target widget found: ${task.widgetName}`);
+        throw new Error(`No target widget found: ${task.widgetName}. Add or select a node with this widget.`);
     }
     const applied = setWidgetValue(targetNode, task.widgetName, task.value);
     if (!applied) {
-        throw new Error(`Failed to set widget: ${task.widgetName}`);
+        throw new Error(`Target node found, but widget cannot be edited: ${task.widgetName}`);
     }
 }
 
 function findTargetNode(widgetName, runnerNode) {
     if (!widgetName) return null;
-    const selected = getSelectedNodes().filter(node => node !== runnerNode && getWidget(node, widgetName));
+    const selected = getSelectedNodes().filter(node => node !== runnerNode && hasTargetWidget(node, widgetName));
     if (selected.length) return selected[0];
-    return getGraphNodes().find(node => node !== runnerNode && getWidget(node, widgetName)) || null;
+    return getGraphNodes().find(node => node !== runnerNode && hasTargetWidget(node, widgetName)) || null;
+}
+
+function hasTargetWidget(node, widgetName) {
+    if (!node || !widgetName) return false;
+    if (getWidget(node, widgetName)) return true;
+    return Array.isArray(node.inputs) && node.inputs.some(input => {
+        const inputName = input?.name || "";
+        const widgetNameFromInput = input?.widget?.name || "";
+        return inputName === widgetName || widgetNameFromInput === widgetName;
+    });
 }
 
 function getGraphNodes() {
-    return Array.isArray(app?.graph?._nodes) ? app.graph._nodes : [];
+    const graph = app?.graph || app?.canvas?.graph || window?.LGraphCanvas?.active_canvas?.graph;
+    const buckets = [
+        graph?._nodes,
+        graph?.nodes,
+        graph?._nodes_by_id ? Object.values(graph._nodes_by_id) : null,
+    ];
+    const nodes = [];
+    const seen = new Set();
+    buckets.forEach(bucket => {
+        if (!Array.isArray(bucket)) return;
+        bucket.forEach(node => {
+            if (!node || seen.has(node.id)) return;
+            seen.add(node.id);
+            nodes.push(node);
+        });
+    });
+    return nodes;
 }
 
 function getSelectedNodes() {
