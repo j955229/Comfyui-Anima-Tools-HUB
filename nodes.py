@@ -1731,6 +1731,49 @@ def _load_animadex_all_characters(max_pages: int | None = None, query: str = "")
         _animadex_all_character_cache[cache_key] = {"time": now, "payload": payload}
     return payload
 
+def _load_animadex_character_pages(start_page: int = 1, page_count: int = 8, query: str = "") -> dict:
+    start_page = max(1, int(start_page or 1))
+    page_count = max(1, min(30, int(page_count or 8)))
+    cache_key = f"pages:{query or 'all'}:{start_page}:{page_count}"
+    now = time.time()
+    with _animadex_all_character_cache_lock:
+        cached = _animadex_all_character_cache.get(cache_key)
+        if cached and now - cached.get("time", 0) < _animadex_all_character_cache_ttl:
+            return cached["payload"]
+
+    first = _fetch_animadex_character_page(start_page, query)
+    total_pages = int(first.get("pages") or start_page)
+    total = int(first.get("total") or 0)
+    page_size = int(first.get("page_size") or 0)
+    end_page = min(total_pages, start_page + page_count - 1)
+    rows_by_page = {start_page: first.get("results") if isinstance(first.get("results"), list) else []}
+
+    if end_page > start_page:
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = {executor.submit(_fetch_animadex_character_page, page, query): page for page in range(start_page + 1, end_page + 1)}
+            for future in as_completed(futures):
+                page = futures[future]
+                data = future.result()
+                rows_by_page[page] = data.get("results") if isinstance(data.get("results"), list) else []
+
+    rows = []
+    for page in range(start_page, end_page + 1):
+        rows.extend(rows_by_page.get(page, []))
+
+    payload = {
+        "success": True,
+        "total": total or len(rows),
+        "page_size": page_size,
+        "start_page": start_page,
+        "pages": end_page - start_page + 1,
+        "next_page": end_page + 1 if end_page < total_pages else None,
+        "total_pages": total_pages,
+        "results": rows,
+    }
+    with _animadex_all_character_cache_lock:
+        _animadex_all_character_cache[cache_key] = {"time": now, "payload": payload}
+    return payload
+
 @PromptServer.instance.routes.get("/anima-tools/character/official")
 async def get_official_character_api(request):
     name = str(request.query.get("name", "")).strip()
@@ -1776,6 +1819,17 @@ async def search_animadex_characters_api(request):
         return web.json_response(_load_animadex_all_characters(max_pages=max_pages, query=query))
     except Exception as e:
         print(f"[Anima Tools] Error searching AnimaDex characters: {e}")
+        return web.json_response({"success": False, "error": str(e)}, status=502)
+
+@PromptServer.instance.routes.get("/anima-tools/character/animadex/pages")
+async def get_animadex_character_pages_api(request):
+    try:
+        query = str(request.query.get("q", "")).strip()
+        start_page = int(request.query.get("start", "1"))
+        page_count = int(request.query.get("pages", "8"))
+        return web.json_response(_load_animadex_character_pages(start_page=start_page, page_count=page_count, query=query))
+    except Exception as e:
+        print(f"[Anima Tools] Error fetching AnimaDex character pages: {e}")
         return web.json_response({"success": False, "error": str(e)}, status=502)
 
 

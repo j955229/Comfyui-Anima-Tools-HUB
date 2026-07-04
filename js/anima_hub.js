@@ -2,7 +2,7 @@ import { app } from "../../scripts/app.js";
 import { applyTagsToTarget } from "./anima_apply_tags.js";
 import { ANIMA_SECTION_WIDGETS, getTargetById, resolveAnimaTargets } from "./anima_target_resolver.js";
 import { ARTIST_SOURCES, getActiveArtistSource, getArtistDataForSource, getArtistSourceStatus, setActiveArtistSource } from "./anima_artist_sources.js";
-import { CHARACTER_SOURCES, getActiveCharacterSource, getCharacterDataForSource, getCharacterSourceStatus, setActiveCharacterSource } from "./anima_character_sources.js";
+import { CHARACTER_SOURCES, getActiveCharacterSource, getCharacterDataForSource, getCharacterSourceStatus, hasMoreCharacterDataForSource, loadMoreCharacterDataForSource, setActiveCharacterSource } from "./anima_character_sources.js";
 import { getTaxonomyCategories, getTaxonomyCounts, getTaxonomyGroups, itemMatchesTaxonomy } from "./anima_taxonomy.js";
 import "./character_data.js";
 import "./clothing_data.js";
@@ -605,6 +605,31 @@ async function refreshCharacterData(root) {
     HUB_STATE.characterDataLoadedSource = source;
     HUB_STATE.characterDataLoadedQuery = query;
     HUB_STATE.characterDataLoading = false;
+    if (root && activeHub?.contains(root)) {
+        renderHub(root);
+    }
+}
+
+async function loadMoreCharacterData(root) {
+    if (HUB_STATE.characterDataLoading) return;
+    const source = HUB_STATE.characterSource;
+    const query = root?.querySelector(".anima-hub-search")?.value?.trim?.() || "";
+    if (!hasMoreCharacterDataForSource(source, query)) return;
+
+    HUB_STATE.characterDataLoading = true;
+    renderHub(root);
+    const data = await loadMoreCharacterDataForSource(source, query);
+    const activeQuery = root?.querySelector(".anima-hub-search")?.value?.trim?.() || "";
+    if (source !== HUB_STATE.characterSource || query !== activeQuery) {
+        HUB_STATE.characterDataLoading = false;
+        return;
+    }
+
+    HUB_STATE.characterData = data;
+    HUB_STATE.characterDataLoadedSource = source;
+    HUB_STATE.characterDataLoadedQuery = query;
+    HUB_STATE.characterDataLoading = false;
+    HUB_STATE.visibleLimits.character = (HUB_STATE.visibleLimits.character || PAGE_SIZE) + PAGE_SIZE;
     if (root && activeHub?.contains(root)) {
         renderHub(root);
     }
@@ -1450,7 +1475,7 @@ function getSourceStatusForSection(section) {
         return HUB_STATE.artistDataLoading ? "正在载入画师..." : getArtistSourceStatus(HUB_STATE.artistSource);
     }
     if (section === "character") {
-        return HUB_STATE.characterDataLoading ? "正在载入人物..." : getCharacterSourceStatus(HUB_STATE.characterSource);
+        return getCharacterSourceStatus(HUB_STATE.characterSource) || (HUB_STATE.characterDataLoading ? "正在载入人物..." : "");
     }
     return "";
 }
@@ -1920,15 +1945,20 @@ function renderHub(root) {
     });
 }
 
-function handleGridScroll(root) {
+async function handleGridScroll(root) {
     const grid = root.querySelector(".anima-hub-grid");
     const section = HUB_STATE.activeSection;
     if (!grid || grid.dataset.section !== section) return;
     const total = Number(grid.dataset.matchingTotal || "0");
     const current = HUB_STATE.visibleLimits[section] || PAGE_SIZE;
-    if (current >= total) return;
     const nearBottom = grid.scrollTop + grid.clientHeight >= grid.scrollHeight - 360;
     if (!nearBottom) return;
+    if (current >= total) {
+        if (section === "character") {
+            await loadMoreCharacterData(root);
+        }
+        return;
+    }
     HUB_STATE.visibleLimits[section] = current + PAGE_SIZE;
     renderHub(root);
 }
