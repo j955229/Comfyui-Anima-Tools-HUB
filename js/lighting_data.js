@@ -14,7 +14,7 @@ const lightingData = [
       "bright rim around silhouette",
       "face partially in shadow"
     ],
-    "folder": "wildcards/image/lighting",
+    "folder": "img/hub/lighting",
     "preview": "/anima-tools/wildcard-image/lighting/2026-07-05.png"
   },
   {
@@ -31,7 +31,7 @@ const lightingData = [
       "thin glowing edge light around hair and shoulders",
       "dark front lighting"
     ],
-    "folder": "wildcards/image/lighting",
+    "folder": "img/hub/lighting",
     "preview": "/anima-tools/wildcard-image/lighting/2026-07-05_01.png"
   },
   {
@@ -48,7 +48,7 @@ const lightingData = [
       "key light from the left side only",
       "one side of face in shadow"
     ],
-    "folder": "wildcards/image/lighting",
+    "folder": "img/hub/lighting",
     "preview": "/anima-tools/wildcard-image/lighting/2026-07-05_02.png"
   },
   {
@@ -66,7 +66,7 @@ const lightingData = [
       "upward shadows on face",
       "eerie  lighting"
     ],
-    "folder": "wildcards/image/lighting",
+    "folder": "img/hub/lighting",
     "preview": "/anima-tools/wildcard-image/lighting/2026-07-05_03.png"
   },
   {
@@ -82,7 +82,7 @@ const lightingData = [
       "overhead lighting",
       "top-down spotlight"
     ],
-    "folder": "wildcards/image/lighting",
+    "folder": "img/hub/lighting",
     "preview": "/anima-tools/wildcard-image/lighting/2026-07-05_04.png"
   },
   {
@@ -99,7 +99,7 @@ const lightingData = [
       "deep black shadows",
       "bright focused highlights"
     ],
-    "folder": "wildcards/image/lighting",
+    "folder": "img/hub/lighting",
     "preview": "/anima-tools/wildcard-image/lighting/2026-07-05_05.png"
   },
   {
@@ -117,7 +117,7 @@ const lightingData = [
       "controlled shadows",
       "movie still"
     ],
-    "folder": "wildcards/image/lighting",
+    "folder": "img/hub/lighting",
     "preview": "/anima-tools/wildcard-image/lighting/2026-07-05_06.png"
   },
   {
@@ -134,7 +134,7 @@ const lightingData = [
       "visible light beams through haze",
       "atmospheric dust"
     ],
-    "folder": "wildcards/image/lighting",
+    "folder": "img/hub/lighting",
     "preview": "/anima-tools/wildcard-image/lighting/2026-07-05_07.png"
   },
   {
@@ -151,7 +151,7 @@ const lightingData = [
       "strong light",
       "rainbow flare streaks"
     ],
-    "folder": "wildcards/image/lighting",
+    "folder": "img/hub/lighting",
     "preview": "/anima-tools/wildcard-image/lighting/2026-07-05_08.png"
   },
   {
@@ -168,7 +168,7 @@ const lightingData = [
       "glowing highlights",
       "overexposed light glow"
     ],
-    "folder": "wildcards/image/lighting",
+    "folder": "img/hub/lighting",
     "preview": "/anima-tools/wildcard-image/lighting/2026-07-05_09.png"
   },
   {
@@ -185,7 +185,7 @@ const lightingData = [
       "out-of-focus background light circles",
       "shallow depth of field"
     ],
-    "folder": "wildcards/image/lighting",
+    "folder": "img/hub/lighting",
     "preview": "/anima-tools/wildcard-image/lighting/2026-07-05_10.png"
   },
   {
@@ -202,7 +202,7 @@ const lightingData = [
       "low warm sunset sun",
       "long orange shadows"
     ],
-    "folder": "wildcards/image/lighting",
+    "folder": "img/hub/lighting",
     "preview": "/anima-tools/wildcard-image/lighting/2026-07-05_11.png"
   },
   {
@@ -219,7 +219,7 @@ const lightingData = [
       "deep blue dusk ambient light",
       "cool twilight mood"
     ],
-    "folder": "wildcards/image/lighting",
+    "folder": "img/hub/lighting",
     "preview": "/anima-tools/wildcard-image/lighting/2026-07-05_12.png"
   },
   {
@@ -236,7 +236,7 @@ const lightingData = [
       "vivid magenta and cyan neon signs",
       "cyberpunk color cast"
     ],
-    "folder": "wildcards/image/lighting",
+    "folder": "img/hub/lighting",
     "preview": "/anima-tools/wildcard-image/lighting/2026-07-05_13.png"
   },
   {
@@ -252,7 +252,7 @@ const lightingData = [
       "colored gel lighting",
       "split red and blue lights on opposite sides"
     ],
-    "folder": "wildcards/image/lighting",
+    "folder": "img/hub/lighting",
     "preview": "/anima-tools/wildcard-image/lighting/2026-07-05_14.png"
   },
   {
@@ -269,7 +269,7 @@ const lightingData = [
       "cozy amber  lighting",
       "soft warm shadows"
     ],
-    "folder": "wildcards/image/lighting",
+    "folder": "img/hub/lighting",
     "preview": "/anima-tools/wildcard-image/lighting/2026-07-05_15.png"
   },
   {
@@ -286,7 +286,7 @@ const lightingData = [
       "cold cyan ambient light",
       "pale blue shadows"
     ],
-    "folder": "wildcards/image/lighting",
+    "folder": "img/hub/lighting",
     "preview": "/anima-tools/wildcard-image/lighting/2026-07-05_16.png"
   }
 ];

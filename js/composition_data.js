@@ -13,7 +13,7 @@ const compositionData = [
       "camera above the character looking down",
       "floor visible behind the character"
     ],
-    "folder": "wildcards/image/composition",
+    "folder": "img/hub/composition",
     "preview": "/anima-tools/wildcard-image/composition/2026-07-05.png"
   },
   {
@@ -30,7 +30,7 @@ const compositionData = [
       "camera below waist level looking up",
       "sky or ceiling visible behind the character"
     ],
-    "folder": "wildcards/image/composition",
+    "folder": "img/hub/composition",
     "preview": "/anima-tools/wildcard-image/composition/2026-07-05_01.png"
   },
   {
@@ -47,7 +47,7 @@ const compositionData = [
       "camera placed near the floor",
       "extreme low angle looking upward"
     ],
-    "folder": "wildcards/image/composition",
+    "folder": "img/hub/composition",
     "preview": "/anima-tools/wildcard-image/composition/2026-07-05_02.png"
   },
   {
@@ -63,7 +63,7 @@ const compositionData = [
       "dutch angle",
       "tilted camera horizon"
     ],
-    "folder": "wildcards/image/composition",
+    "folder": "img/hub/composition",
     "preview": "/anima-tools/wildcard-image/composition/2026-07-05_05.png"
   },
   {
@@ -80,7 +80,7 @@ const compositionData = [
       "viewer perspective",
       "hands or foreground body parts near the camera"
     ],
-    "folder": "wildcards/image/composition",
+    "folder": "img/hub/composition",
     "preview": "/anima-tools/wildcard-image/composition/2026-07-05_07.png"
   },
   {
@@ -97,7 +97,7 @@ const compositionData = [
       "blurred shoulder in foreground",
       "camera behind another person"
     ],
-    "folder": "wildcards/image/composition",
+    "folder": "img/hub/composition",
     "preview": "/anima-tools/wildcard-image/composition/2026-07-05_08.png"
   },
   {
@@ -114,7 +114,7 @@ const compositionData = [
       "side camera angle",
       "character facing left or right"
     ],
-    "folder": "wildcards/image/composition",
+    "folder": "img/hub/composition",
     "preview": "/anima-tools/wildcard-image/composition/2026-07-05_09.png"
   },
   {
@@ -131,7 +131,7 @@ const compositionData = [
       "eyes and face fill the frame",
       "cropped forehead and chin"
     ],
-    "folder": "wildcards/image/composition",
+    "folder": "img/hub/composition",
     "preview": "/anima-tools/wildcard-image/composition/2026-07-05_10.png"
   },
   {
@@ -148,7 +148,7 @@ const compositionData = [
       "head and shoulders fill most of the frame",
       "face focus"
     ],
-    "folder": "wildcards/image/composition",
+    "folder": "img/hub/composition",
     "preview": "/anima-tools/wildcard-image/composition/2026-07-05_11.png"
   },
   {
@@ -164,7 +164,7 @@ const compositionData = [
       "upper body shot",
       "waist-up framing"
     ],
-    "folder": "wildcards/image/composition",
+    "folder": "img/hub/composition",
     "preview": "/anima-tools/wildcard-image/composition/2026-07-05_12.png"
   },
   {
@@ -180,7 +180,7 @@ const compositionData = [
       "cowboy shot",
       "full figure portrait"
     ],
-    "folder": "wildcards/image/composition",
+    "folder": "img/hub/composition",
     "preview": "/anima-tools/wildcard-image/composition/2026-07-05_13.png"
   },
   {
@@ -196,7 +196,7 @@ const compositionData = [
       "full body shot",
       "whole character visible"
     ],
-    "folder": "wildcards/image/composition",
+    "folder": "img/hub/composition",
     "preview": "/anima-tools/wildcard-image/composition/2026-07-05_14.png"
   },
   {
@@ -213,7 +213,7 @@ const compositionData = [
       "character  in the environment",
       "large background area visible"
     ],
-    "folder": "wildcards/image/composition",
+    "folder": "img/hub/composition",
     "preview": "/anima-tools/wildcard-image/composition/2026-07-05_15.png"
   },
   {
@@ -229,7 +229,7 @@ const compositionData = [
       "centered composition",
       "balanced symmetrical frame"
     ],
-    "folder": "wildcards/image/composition",
+    "folder": "img/hub/composition",
     "preview": "/anima-tools/wildcard-image/composition/2026-07-05_16.png"
   },
   {
@@ -245,7 +245,7 @@ const compositionData = [
       "rule of thirds composition",
       "empty space on one side"
     ],
-    "folder": "wildcards/image/composition",
+    "folder": "img/hub/composition",
     "preview": "/anima-tools/wildcard-image/composition/2026-07-05_17.png"
   },
   {
@@ -261,7 +261,7 @@ const compositionData = [
       "diagonal composition",
       "dynamic slanted layout"
     ],
-    "folder": "wildcards/image/composition",
+    "folder": "img/hub/composition",
     "preview": "/anima-tools/wildcard-image/composition/2026-07-05_18.png"
   },
   {
@@ -277,7 +277,7 @@ const compositionData = [
       "shallow depth of field",
       "sharp character with strongly blurred background"
     ],
-    "folder": "wildcards/image/composition",
+    "folder": "img/hub/composition",
     "preview": "/anima-tools/wildcard-image/composition/2026-07-05_19.png"
   },
   {
@@ -295,7 +295,7 @@ const compositionData = [
       "curved background edges",
       "character deformed"
     ],
-    "folder": "wildcards/image/composition",
+    "folder": "img/hub/composition",
     "preview": "/anima-tools/wildcard-image/composition/2026-07-05_21.png"
   }
 ];

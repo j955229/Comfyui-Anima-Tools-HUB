@@ -1561,28 +1561,40 @@ def _set_selector_workflow_widget_value(workflow_node, class_type, input_name, v
         widgets_values.append("")
     widgets_values[index] = value
 
-ANIMA_DETAIL_RANDOM_FILES = {
-    "composition": "composition.txt",
-    "expression": "expression.txt",
-    "lighting": "lighting.txt",
+ANIMA_DETAIL_DATA_FILES = {
+    "composition": "composition_data.js",
+    "expression": "expression_data.js",
+    "lighting": "lighting_data.js",
 }
 
 def _load_anima_detail_random_lines(section):
-    filename = ANIMA_DETAIL_RANDOM_FILES.get(section)
+    filename = ANIMA_DETAIL_DATA_FILES.get(section)
     if not filename:
         return []
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wildcards", "anima_tools", filename)
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "js", filename)
     if not os.path.exists(path):
         return []
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
+            content = f.read()
+        match = re.search(r"=\s*(\[[\s\S]*?\])\s*;", content)
+        if not match:
+            return []
+        rows = json.loads(match.group(1))
+        lines = []
+        for item in rows if isinstance(rows, list) else []:
+            if not isinstance(item, dict):
+                continue
+            tags = str(item.get("tags") or "").strip()
+            if tags:
+                lines.append(tags)
+        return lines
     except Exception as e:
         print(f"[Anima Tools] Failed to read random {section} tags: {e}")
         return []
 
 def _selector_random_text(composer, section):
-    if section in ANIMA_DETAIL_RANDOM_FILES:
+    if section in ANIMA_DETAIL_DATA_FILES:
         import random
         lines = _load_anima_detail_random_lines(section)
         if not lines:
@@ -1836,7 +1848,151 @@ async def get_anima_wildcard_image_api(request):
     filename = os.path.basename(str(request.match_info.get("filename", "")).strip())
     if section not in ("composition", "expression", "lighting") or not filename:
         return web.Response(status=404)
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wildcards", "image", section, filename)
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "img", "hub", section, filename)
+    if not os.path.isfile(path):
+        return web.Response(status=404)
+    return web.FileResponse(path)
+
+CUSTOM_HUB_SECTIONS = ["artist", "character", "clothing", "background", "pose", "composition", "expression", "lighting"]
+
+def get_anima_user_dir(*parts):
+    try:
+        user_dir = folder_paths.get_user_directory()
+    except AttributeError:
+        user_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "user"))
+        if not os.path.exists(user_dir):
+            user_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "user"))
+    path = os.path.join(user_dir, "anima_tools", *parts)
+    os.makedirs(path if not parts or os.path.splitext(path)[1] == "" else os.path.dirname(path), exist_ok=True)
+    return path
+
+def get_custom_hub_path():
+    return get_anima_user_dir("anima_tools_custom_hub.json")
+
+def get_default_custom_hub_data():
+    return {
+        "categories": {section: [] for section in CUSTOM_HUB_SECTIONS},
+        "cards": {section: [] for section in CUSTOM_HUB_SECTIONS},
+    }
+
+def normalize_custom_hub_data(data):
+    default_data = get_default_custom_hub_data()
+    if not isinstance(data, dict):
+        return default_data
+    normalized = get_default_custom_hub_data()
+    for bucket in ("categories", "cards"):
+        source_bucket = data.get(bucket)
+        if not isinstance(source_bucket, dict):
+            continue
+        for section in CUSTOM_HUB_SECTIONS:
+            rows = source_bucket.get(section)
+            if not isinstance(rows, list):
+                continue
+            normalized[bucket][section] = [row for row in rows if isinstance(row, dict)]
+    return normalized
+
+def load_custom_hub_data():
+    path = get_custom_hub_path()
+    if not os.path.exists(path):
+        return get_default_custom_hub_data()
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+        if not content:
+            return get_default_custom_hub_data()
+        return normalize_custom_hub_data(json.loads(content))
+    except Exception as e:
+        print(f"[Anima Tools] Error reading custom hub data: {e}")
+        return get_default_custom_hub_data()
+
+def save_custom_hub_data(data):
+    path = get_custom_hub_path()
+    normalized = normalize_custom_hub_data(data)
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(normalized, f, indent=2, ensure_ascii=False)
+    os.replace(tmp_path, path)
+    return path, normalized
+
+def _safe_upload_section(section):
+    section = str(section or "").strip().lower()
+    return section if section in CUSTOM_HUB_SECTIONS else "custom"
+
+def _compressed_custom_image_bytes(raw_data):
+    if Image is None:
+        return raw_data, ".bin", "application/octet-stream"
+    img = Image.open(BytesIO(raw_data))
+    if img.mode not in ("RGB", "RGBA"):
+        img = img.convert("RGBA" if "A" in img.getbands() else "RGB")
+    max_side = 1400
+    if max(img.size) > max_side:
+        ratio = max_side / max(img.size)
+        new_size = (max(1, int(img.width * ratio)), max(1, int(img.height * ratio)))
+        resample = getattr(Image, "Resampling", Image).LANCZOS
+        img = img.resize(new_size, resample)
+    output = BytesIO()
+    if img.mode == "RGBA":
+        img.save(output, format="WEBP", quality=84, method=6, lossless=False)
+    else:
+        img.save(output, format="WEBP", quality=82, method=6)
+    return output.getvalue(), ".webp", "image/webp"
+
+@PromptServer.instance.routes.get("/anima-tools/custom-hub")
+async def get_custom_hub_api(request):
+    return web.json_response(load_custom_hub_data())
+
+@PromptServer.instance.routes.post("/anima-tools/custom-hub")
+async def save_custom_hub_api(request):
+    try:
+        raw_body = await request.text()
+        body = json.loads(raw_body) if raw_body.strip() else {}
+        path, data = save_custom_hub_data(body)
+        return web.json_response({"success": True, "path": path, "data": data})
+    except Exception as e:
+        print(f"[Anima Tools] Error saving custom hub data: {e}")
+        return web.json_response({"success": False, "error": str(e)}, status=500)
+
+@PromptServer.instance.routes.post("/anima-tools/custom-card-image")
+async def upload_custom_card_image_api(request):
+    try:
+        reader = await request.multipart()
+        section = "custom"
+        raw_data = b""
+        async for field in reader:
+            if field.name == "section":
+                section = _safe_upload_section(await field.text())
+            elif field.name == "image":
+                raw_data = await field.read(decode=False)
+        if not raw_data:
+            return web.json_response({"success": False, "error": "No image uploaded"}, status=400)
+        if len(raw_data) > 24 * 1024 * 1024:
+            return web.json_response({"success": False, "error": "Image is too large"}, status=413)
+
+        compressed, extension, mime = _compressed_custom_image_bytes(raw_data)
+        digest = hashlib.sha256(raw_data).hexdigest()[:18]
+        filename = f"{digest}{extension}"
+        upload_dir = get_anima_user_dir("uploads", section)
+        path = os.path.join(upload_dir, filename)
+        with open(path, "wb") as f:
+            f.write(compressed)
+        return web.json_response({
+            "success": True,
+            "filename": filename,
+            "mime": mime,
+            "size": len(compressed),
+            "url": f"/anima-tools/custom-card-image/{section}/{filename}",
+        })
+    except Exception as e:
+        print(f"[Anima Tools] Error saving custom card image: {e}")
+        return web.json_response({"success": False, "error": str(e)}, status=500)
+
+@PromptServer.instance.routes.get("/anima-tools/custom-card-image/{section}/{filename}")
+async def get_custom_card_image_api(request):
+    section = _safe_upload_section(request.match_info.get("section", "custom"))
+    filename = os.path.basename(str(request.match_info.get("filename", "")).strip())
+    if not filename:
+        return web.Response(status=404)
+    path = os.path.join(get_anima_user_dir("uploads", section), filename)
     if not os.path.isfile(path):
         return web.Response(status=404)
     return web.FileResponse(path)

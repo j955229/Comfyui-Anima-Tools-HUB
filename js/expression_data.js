@@ -12,7 +12,7 @@ const expressionData = [
       "smile",
       "gentle smile"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05.png"
   },
   {
@@ -28,7 +28,7 @@ const expressionData = [
       "grin",
       "open smile"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_01.png"
   },
   {
@@ -45,7 +45,7 @@ const expressionData = [
       "open mouth",
       "smile"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_02.png"
   },
   {
@@ -62,7 +62,7 @@ const expressionData = [
       "anger vein",
       "furrowed brow"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_03.png"
   },
   {
@@ -79,7 +79,7 @@ const expressionData = [
       "half-closed eyes",
       "frown"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_04.png"
   },
   {
@@ -96,7 +96,7 @@ const expressionData = [
       "downcast eyes",
       "frown"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_05.png"
   },
   {
@@ -113,7 +113,7 @@ const expressionData = [
       "tears",
       "teardrop"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_06.png"
   },
   {
@@ -130,7 +130,7 @@ const expressionData = [
       "wide eyes",
       "open mouth"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_07.png"
   },
   {
@@ -147,7 +147,7 @@ const expressionData = [
       "fear",
       "trembling"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_08.png"
   },
   {
@@ -164,7 +164,7 @@ const expressionData = [
       "blush",
       "averting eyes"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_09.png"
   },
   {
@@ -180,7 +180,7 @@ const expressionData = [
       "open mouth",
       "parted lips"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_10.png"
   },
   {
@@ -196,7 +196,7 @@ const expressionData = [
       "closed mouth",
       "mouth closed"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_11.png"
   },
   {
@@ -213,7 +213,7 @@ const expressionData = [
       "tongue",
       "playful"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_12.png"
   },
   {
@@ -230,7 +230,7 @@ const expressionData = [
       "teeth",
       "grimace"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_13.png"
   },
   {
@@ -247,7 +247,7 @@ const expressionData = [
       "sleepy",
       "relaxed"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_14.png"
   },
   {
@@ -264,7 +264,7 @@ const expressionData = [
       "surprised",
       "staring"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_15.png"
   },
   {
@@ -281,7 +281,7 @@ const expressionData = [
       "starry eyes",
       "excited"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_16.png"
   },
   {
@@ -298,7 +298,7 @@ const expressionData = [
       "heart eyes",
       "love"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_17.png"
   },
   {
@@ -315,7 +315,7 @@ const expressionData = [
       "embarrassed",
       "red cheeks"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_18.png"
   },
   {
@@ -332,7 +332,7 @@ const expressionData = [
       "blank stare",
       "emotionless"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_20.png"
   },
   {
@@ -349,7 +349,7 @@ const expressionData = [
       "smug face",
       "confident"
     ],
-    "folder": "wildcards/image/expression",
+    "folder": "img/hub/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_21.png"
   }
 ];

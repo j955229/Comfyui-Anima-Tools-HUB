@@ -3,7 +3,7 @@ import { applyTagsToTarget } from "./anima_apply_tags.js";
 import { ANIMA_SECTION_WIDGETS, getTargetById, resolveAnimaTargets } from "./anima_target_resolver.js";
 import { ARTIST_SOURCES, getActiveArtistSource, getArtistDataForSource, getArtistSourceStatus, setActiveArtistSource } from "./anima_artist_sources.js";
 import { CHARACTER_SOURCES, getActiveCharacterSource, getCharacterDataForSource, getCharacterSourceStatus, hasMoreCharacterDataForSource, loadMoreCharacterDataForSource, setActiveCharacterSource } from "./anima_character_sources.js";
-import { getTaxonomyCategories, getTaxonomyCounts, getTaxonomyGroups, itemMatchesTaxonomy } from "./anima_taxonomy.js";
+import { getTaxonomyCategories, getTaxonomyGroups, itemMatchesTaxonomy } from "./anima_taxonomy.js";
 import "./character_data.js";
 import "./clothing_data.js";
 import "./background_data.js";
@@ -26,6 +26,7 @@ const SECTIONS = [
 const PAGE_SIZE = 240;
 const FAVORITES_STORAGE_KEY = "anima-hub-favorites-fallback";
 const EDITS_STORAGE_KEY = "anima-hub-card-edits";
+const CUSTOM_HUB_STORAGE_KEY = "anima-hub-custom-data-fallback";
 
 const HUB_STATE = {
     activeSection: "artist",
@@ -85,6 +86,8 @@ const HUB_STATE = {
     targetIds: {},
     favoritesConfig: null,
     favoritesLoaded: false,
+    customHubData: null,
+    customHubLoaded: false,
 };
 
 let activeHub = null;
@@ -134,6 +137,77 @@ function normalizeFavoritesConfig(data) {
         };
     });
     return config;
+}
+
+function defaultCustomHubData() {
+    const data = { categories: {}, cards: {} };
+    SECTIONS.forEach(section => {
+        data.categories[section.id] = [];
+        data.cards[section.id] = [];
+    });
+    return data;
+}
+
+function normalizeCustomHubData(data) {
+    const normalized = defaultCustomHubData();
+    if (!data || typeof data !== "object") return normalized;
+    ["categories", "cards"].forEach(bucket => {
+        const source = data[bucket];
+        if (!source || typeof source !== "object") return;
+        SECTIONS.forEach(section => {
+            const rows = source[section.id];
+            normalized[bucket][section.id] = Array.isArray(rows) ? rows.filter(row => row && typeof row === "object") : [];
+        });
+    });
+    return normalized;
+}
+
+async function loadCustomHubData() {
+    if (HUB_STATE.customHubLoaded) return HUB_STATE.customHubData;
+    let data = null;
+    try {
+        const response = await fetch("/anima-tools/custom-hub");
+        if (response.ok) {
+            data = await response.json();
+        }
+    } catch (error) {
+        console.warn("[Anima Tools] Failed to load custom Hub data from server", error);
+    }
+
+    if (!data) {
+        try {
+            data = JSON.parse(localStorage.getItem(CUSTOM_HUB_STORAGE_KEY) || "null");
+        } catch (error) {
+            console.warn("[Anima Tools] Failed to load custom Hub data fallback", error);
+        }
+    }
+
+    HUB_STATE.customHubData = normalizeCustomHubData(data);
+    HUB_STATE.customHubLoaded = true;
+    return HUB_STATE.customHubData;
+}
+
+async function saveCustomHubData() {
+    const data = normalizeCustomHubData(HUB_STATE.customHubData);
+    HUB_STATE.customHubData = data;
+    localStorage.setItem(CUSTOM_HUB_STORAGE_KEY, JSON.stringify(data));
+    try {
+        await fetch("/anima-tools/custom-hub", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+        });
+    } catch (error) {
+        console.warn("[Anima Tools] Failed to save custom Hub data to server", error);
+    }
+}
+
+function getCustomCategories(section) {
+    return normalizeCustomHubData(HUB_STATE.customHubData).categories[section] || [];
+}
+
+function getCustomCards(section) {
+    return normalizeCustomHubData(HUB_STATE.customHubData).cards[section] || [];
 }
 
 async function loadFavoritesConfig() {
@@ -219,7 +293,7 @@ function pushUniquePromptTokens(target, seen, value) {
     });
 }
 
-function getSectionData(section) {
+function getBaseSectionData(section) {
     if (section === "artist") return HUB_STATE.artistDataLoadedSource === HUB_STATE.artistSource ? HUB_STATE.artistData : [];
     if (section === "character") return HUB_STATE.characterDataLoadedSource === HUB_STATE.characterSource ? HUB_STATE.characterData : [];
     if (section === "clothing") return window.clothingData || [];
@@ -231,8 +305,13 @@ function getSectionData(section) {
     return [];
 }
 
+function getSectionData(section) {
+    return [...getBaseSectionData(section), ...getCustomCards(section)];
+}
+
 function getItemKey(section, item) {
     if (item?.hubKey) return String(item.hubKey);
+    if (item?.isCustom && item?.id) return `custom:${item.id}`;
     if (section === "artist") return `${item?.source || "theta"}:${item?.sourceKey || item?.name || item?.prompt || ""}`;
     return String(item?.id || item?.name || item?.tags || "");
 }
@@ -285,12 +364,14 @@ function getEditedTags(section, item, fallback) {
 }
 
 function getItemTitle(section, item) {
+    if (item?.isCustom) return item?.name || item?.title || "";
     if (section === "artist") return item?.prompt || `@${item?.name || ""}`;
     if (section === "character") return titleCase(item?.name || "");
     return item?.name || item?.name_zh || item?.tags || "";
 }
 
 function getItemMeta(section, item) {
+    if (item?.isCustom) return Array.isArray(item?.categories) ? item.categories.join(" / ") : (item?.category || "");
     if (section === "artist") return [item?.sourceLabel, `${item?.post_count ?? item?.postCount ?? 0} works`].filter(Boolean).join(" / ");
     if (section === "character") return item?.copyright || "";
     return [item?.categories?.[0], item?.traits?.slice?.(0, 3)?.join(", ")].filter(Boolean).join(" / ");
@@ -308,6 +389,7 @@ function getSearchText(section, item) {
         item?.prompt,
         item?.source,
         item?.sourceLabel,
+        ...(Array.isArray(item?.taxonomyLabels) ? item.taxonomyLabels : []),
         ...(Array.isArray(item?.aliases) ? item.aliases : []),
     ].join(" ").toLowerCase();
 }
@@ -349,9 +431,17 @@ function getDanbooruUrl(section, item) {
 }
 
 async function getPromptForItem(section, item, characterMode = item?._hubCharacterMode || "trigger") {
-    if (section === "artist") return getEditedTrigger(section, item, item?.prompt || `@${item?.name || ""}`);
+    if (section === "artist") return getEditedTrigger(section, item, item?.prompt || item?.trigger || `@${item?.name || ""}`);
     if (section === "character") {
-        if (item?.isCustom) return item.customContent || item.name || "";
+        if (item?.isCustom) {
+            const trigger = getEditedTrigger(section, item, item?.trigger || item?.name || "");
+            if (characterMode !== "trigger_tags") return trigger;
+            const result = [];
+            const seen = new Set();
+            pushUniquePromptTokens(result, seen, trigger);
+            pushUniquePromptTokens(result, seen, getEditedTags(section, item, item?.tags || ""));
+            return result.join(", ");
+        }
         const officialData = await getOfficialCharacterData(item);
         const trigger = getEditedTrigger(section, item, item?.trigger || officialData?.trigger || [item?.name, item?.copyright].filter(Boolean).join(", "));
         if (characterMode !== "trigger_tags") return trigger;
@@ -373,6 +463,13 @@ async function getPromptForItem(section, item, characterMode = item?._hubCharact
             if (item?.hair) pushUniquePromptTokens(result, seen, `${item.hair} hair`);
             if (item?.eye) pushUniquePromptTokens(result, seen, `${item.eye} eyes`);
         }
+        return result.join(", ");
+    }
+    if (item?.isCustom) {
+        const result = [];
+        const seen = new Set();
+        pushUniquePromptTokens(result, seen, getEditedTrigger(section, item, item?.trigger || ""));
+        pushUniquePromptTokens(result, seen, getEditedTags(section, item, item?.tags || ""));
         return result.join(", ");
     }
     return splitPromptTokens(getEditedTags(section, item, item?.tags)).join(", ");
@@ -461,11 +558,52 @@ function applyCharacterSearch(root, query) {
 }
 
 function sectionUsesTaxonomy(section) {
-    return getTaxonomyCategories(section).length > 0;
+    return getTaxonomyCategories(section).length > 0 || getCustomCategories(section).length > 0;
 }
 
 function getActiveTaxonomy(section) {
     return HUB_STATE.taxonomy[section] || "all";
+}
+
+function getAllAssignableCategories(section) {
+    const staticCategories = getTaxonomyGroups(section).flatMap(group => (group.children || []).map(category => ({
+        ...category,
+        groupLabel: group.label,
+        isCustom: false,
+    })));
+    const customCategories = getCustomCategories(section).map(category => ({
+        ...category,
+        label: category.label || category.name || "Custom",
+        groupLabel: "自定义",
+        isCustom: true,
+    }));
+    return [...staticCategories, ...customCategories];
+}
+
+function itemHasExplicitTaxonomy(item, categoryId) {
+    return Array.isArray(item?.taxonomyIds) && item.taxonomyIds.includes(categoryId);
+}
+
+function itemMatchesHubTaxonomy(section, item, categoryId) {
+    if (!categoryId || categoryId === "all") return true;
+    if (itemHasExplicitTaxonomy(item, categoryId)) return true;
+    if (getCustomCategories(section).some(category => category.id === categoryId)) return false;
+    return itemMatchesTaxonomy(section, item, categoryId);
+}
+
+function getHubTaxonomyCounts(section, rows) {
+    const counts = new Map();
+    getAllAssignableCategories(section).forEach(category => {
+        counts.set(category.id, 0);
+    });
+    rows.forEach(item => {
+        getAllAssignableCategories(section).forEach(category => {
+            if (itemMatchesHubTaxonomy(section, item, category.id)) {
+                counts.set(category.id, (counts.get(category.id) || 0) + 1);
+            }
+        });
+    });
+    return counts;
 }
 
 function createEl(tag, className, text) {
@@ -533,9 +671,214 @@ function openImagePreview(imageUrl, title = "") {
     document.body.appendChild(overlay);
 }
 
+function closeCustomDialog(dialog) {
+    dialog?.remove();
+}
+
+async function uploadCustomCardImage(section, file) {
+    if (!file) return "";
+    const form = new FormData();
+    form.append("section", section);
+    form.append("image", file);
+    const response = await fetch("/anima-tools/custom-card-image", {
+        method: "POST",
+        body: form,
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.success) {
+        throw new Error(data?.error || "Image upload failed");
+    }
+    return data.url || "";
+}
+
+function openCustomCategoryDialog(root) {
+    const section = HUB_STATE.activeSection;
+    const label = window.prompt("新增小分类名称");
+    const name = String(label || "").trim();
+    if (!name) return;
+    const data = normalizeCustomHubData(HUB_STATE.customHubData);
+    data.categories[section].push({
+        id: `custom_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        label: name,
+        createdAt: new Date().toISOString(),
+    });
+    HUB_STATE.customHubData = data;
+    saveCustomHubData().then(() => {
+        renderHub(root);
+        showToast("小分类已新增");
+    });
+}
+
+function addDialogField(form, labelText, field) {
+    const row = createEl("label", "anima-hub-custom-field");
+    row.appendChild(createEl("span", "", labelText));
+    row.appendChild(field);
+    form.appendChild(row);
+    return field;
+}
+
+function openCustomCardDialog(root) {
+    const section = HUB_STATE.activeSection;
+    const dialog = createEl("div", "anima-hub-custom-dialog");
+    const panel = createEl("div", "anima-hub-custom-panel");
+    const form = createEl("form", "anima-hub-custom-form");
+    panel.appendChild(createEl("div", "anima-hub-custom-title", "新增卡片"));
+
+    const title = addDialogField(form, "标题", createEl("input", "anima-hub-custom-input"));
+    title.required = true;
+    title.placeholder = "例如：Rainy Street";
+
+    const trigger = addDialogField(form, "Trigger", createEl("textarea", "anima-hub-custom-input"));
+    trigger.rows = 2;
+    trigger.placeholder = "主要提示词";
+
+    const tags = addDialogField(form, "Tags", createEl("textarea", "anima-hub-custom-input"));
+    tags.rows = 4;
+    tags.placeholder = "用逗号分隔";
+
+    const image = addDialogField(form, "图片", createEl("input", "anima-hub-custom-input"));
+    image.type = "file";
+    image.accept = "image/png,image/jpeg,image/webp";
+
+    const categorySelect = addDialogField(form, "分类归属", createEl("select", "anima-hub-custom-input"));
+    categorySelect.multiple = true;
+    categorySelect.size = Math.min(8, Math.max(4, getAllAssignableCategories(section).length || 4));
+    getAllAssignableCategories(section).forEach(category => {
+        const option = document.createElement("option");
+        option.value = category.id;
+        option.textContent = `${category.groupLabel || "分类"} / ${category.label}`;
+        categorySelect.appendChild(option);
+    });
+
+    const actions = createEl("div", "anima-hub-custom-actions");
+    const cancel = createEl("button", "anima-hub-button", "取消");
+    cancel.type = "button";
+    cancel.onclick = () => closeCustomDialog(dialog);
+    const submit = createEl("button", "anima-hub-button primary", "新增");
+    submit.type = "submit";
+    actions.appendChild(cancel);
+    actions.appendChild(submit);
+    form.appendChild(actions);
+
+    form.onsubmit = async event => {
+        event.preventDefault();
+        submit.disabled = true;
+        submit.textContent = "储存中";
+        try {
+            const taxonomyIds = Array.from(categorySelect.selectedOptions).map(option => option.value);
+            const assignable = getAllAssignableCategories(section);
+            const taxonomyLabels = assignable.filter(category => taxonomyIds.includes(category.id)).map(category => category.label);
+            const preview = await uploadCustomCardImage(section, image.files?.[0]);
+            const id = `custom_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            const data = normalizeCustomHubData(HUB_STATE.customHubData);
+            data.cards[section].push({
+                id,
+                hubKey: `custom:${id}`,
+                isCustom: true,
+                source: "custom",
+                name: title.value.trim(),
+                trigger: trigger.value.trim(),
+                tags: tags.value.trim(),
+                preview,
+                imageUrl: preview,
+                taxonomyIds,
+                taxonomyLabels,
+                categories: taxonomyLabels,
+                traits: splitPromptTokens(tags.value).slice(0, 4),
+                createdAt: new Date().toISOString(),
+            });
+            HUB_STATE.customHubData = data;
+            await saveCustomHubData();
+            closeCustomDialog(dialog);
+            resetVisibleLimit(section);
+            renderHub(root);
+            showToast("卡片已新增");
+        } catch (error) {
+            console.warn("[Anima Tools] Failed to add custom card", error);
+            alert(error?.message || "新增卡片失败");
+            submit.disabled = false;
+            submit.textContent = "新增";
+        }
+    };
+
+    panel.appendChild(form);
+    dialog.appendChild(panel);
+    dialog.addEventListener("mousedown", event => {
+        if (event.target === dialog) closeCustomDialog(dialog);
+    });
+    document.body.appendChild(dialog);
+    title.focus();
+}
+
+function updateCustomCardCategories(section, cardId, taxonomyIds) {
+    const data = normalizeCustomHubData(HUB_STATE.customHubData);
+    const card = data.cards[section].find(item => item.id === cardId);
+    if (!card) return false;
+    const assignable = getAllAssignableCategories(section);
+    const taxonomyLabels = assignable.filter(category => taxonomyIds.includes(category.id)).map(category => category.label);
+    card.taxonomyIds = taxonomyIds;
+    card.taxonomyLabels = taxonomyLabels;
+    card.categories = taxonomyLabels;
+    HUB_STATE.customHubData = data;
+    return true;
+}
+
+function openCustomCardCategoryDialog(root, section, item) {
+    if (!item?.isCustom) return;
+    const dialog = createEl("div", "anima-hub-custom-dialog");
+    const panel = createEl("div", "anima-hub-custom-panel");
+    const form = createEl("form", "anima-hub-custom-form");
+    panel.appendChild(createEl("div", "anima-hub-custom-title", "调整分类"));
+
+    const categorySelect = addDialogField(form, "分类归属", createEl("select", "anima-hub-custom-input"));
+    categorySelect.multiple = true;
+    const assignable = getAllAssignableCategories(section);
+    const activeIds = new Set(Array.isArray(item.taxonomyIds) ? item.taxonomyIds : []);
+    categorySelect.size = Math.min(10, Math.max(4, assignable.length || 4));
+    assignable.forEach(category => {
+        const option = document.createElement("option");
+        option.value = category.id;
+        option.textContent = `${category.groupLabel || "分类"} / ${category.label}`;
+        option.selected = activeIds.has(category.id);
+        categorySelect.appendChild(option);
+    });
+
+    const actions = createEl("div", "anima-hub-custom-actions");
+    const cancel = createEl("button", "anima-hub-button", "取消");
+    cancel.type = "button";
+    cancel.onclick = () => closeCustomDialog(dialog);
+    const submit = createEl("button", "anima-hub-button primary", "保存");
+    submit.type = "submit";
+    actions.appendChild(cancel);
+    actions.appendChild(submit);
+    form.appendChild(actions);
+
+    form.onsubmit = async event => {
+        event.preventDefault();
+        const taxonomyIds = Array.from(categorySelect.selectedOptions).map(option => option.value);
+        if (!updateCustomCardCategories(section, item.id, taxonomyIds)) {
+            alert("找不到这张自定义卡片");
+            return;
+        }
+        await saveCustomHubData();
+        closeCustomDialog(dialog);
+        renderHub(root);
+        showToast("分类已更新");
+    };
+
+    panel.appendChild(form);
+    dialog.appendChild(panel);
+    dialog.addEventListener("mousedown", event => {
+        if (event.target === dialog) closeCustomDialog(dialog);
+    });
+    document.body.appendChild(dialog);
+    categorySelect.focus();
+}
+
 async function getDisplayTags(section, item) {
     const editedTags = getItemEdit(section, item).tags;
     if (editedTags !== undefined) return splitPromptTokens(editedTags);
+    if (item?.isCustom) return splitPromptTokens(item?.tags);
     if (section === "artist") return splitPromptTokens(item?.name);
     if (section === "character") {
         const officialData = await getOfficialCharacterData(item);
@@ -857,6 +1200,10 @@ function installHubStyles() {
             white-space: nowrap;
         }
         .anima-hub-view {
+            display: flex;
+            gap: 8px;
+        }
+        .anima-hub-custom-tools {
             display: flex;
             gap: 8px;
         }
@@ -1377,6 +1724,73 @@ function installHubStyles() {
             font-size: 12px;
             font-weight: 800;
         }
+        .anima-hub-custom-dialog {
+            position: fixed;
+            inset: 0;
+            z-index: 100003;
+            background: rgba(3,7,18,0.72);
+            display: grid;
+            place-items: center;
+            padding: 22px;
+        }
+        .anima-hub-custom-panel {
+            width: min(520px, 94vw);
+            max-height: min(720px, 92vh);
+            overflow: auto;
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: 10px;
+            background: #14171d;
+            box-shadow: 0 24px 72px rgba(0,0,0,0.52);
+            padding: 18px;
+            box-sizing: border-box;
+        }
+        .anima-hub-custom-title {
+            font-size: 16px;
+            font-weight: 850;
+            color: #ffffff;
+            margin-bottom: 14px;
+        }
+        .anima-hub-custom-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .anima-hub-custom-field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            color: #d4d4d8;
+            font-size: 12px;
+            font-weight: 800;
+        }
+        .anima-hub-custom-input {
+            width: 100%;
+            box-sizing: border-box;
+            border-radius: 7px;
+            border: 1px solid rgba(255,255,255,0.14);
+            background: #202329;
+            color: #f4f4f5;
+            padding: 9px 10px;
+            font: inherit;
+            font-size: 13px;
+            outline: none;
+        }
+        textarea.anima-hub-custom-input {
+            resize: vertical;
+        }
+        select.anima-hub-custom-input {
+            min-height: 112px;
+        }
+        .anima-hub-custom-input:focus {
+            border-color: rgba(56,189,248,0.64);
+            box-shadow: 0 0 0 2px rgba(14,165,233,0.16);
+        }
+        .anima-hub-custom-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding-top: 4px;
+        }
         @keyframes anima-card-flip {
             0% {
                 transform: rotateY(0deg) translateZ(0);
@@ -1513,7 +1927,7 @@ function renderTaxonomyBar(root, section, rows) {
     bar.appendChild(createEl("div", "anima-hub-taxonomy-label", "子分类"));
 
     const activeId = getActiveTaxonomy(section);
-    const counts = getTaxonomyCounts(section, rows);
+    const counts = getHubTaxonomyCounts(section, rows);
 
     const allButton = createEl("button", activeId === "all" ? "anima-hub-taxonomy-chip active" : "anima-hub-taxonomy-chip", "全部");
     allButton.type = "button";
@@ -1525,7 +1939,20 @@ function renderTaxonomyBar(root, section, rows) {
     allButton.appendChild(createEl("span", "anima-hub-taxonomy-count", rows.length.toLocaleString()));
     bar.appendChild(allButton);
 
-    getTaxonomyGroups(section).forEach(group => {
+    const groups = [...getTaxonomyGroups(section)];
+    const customCategories = getCustomCategories(section);
+    if (customCategories.length) {
+        groups.push({
+            id: "custom",
+            label: "自定义",
+            children: customCategories.map(category => ({
+                ...category,
+                label: category.label || category.name || "Custom",
+            })),
+        });
+    }
+
+    groups.forEach(group => {
         const groupEl = createEl("div", "anima-hub-taxonomy-group");
         groupEl.appendChild(createEl("div", "anima-hub-taxonomy-group-title", group.label));
 
@@ -1663,6 +2090,7 @@ function createCardOverlay(root, section, item, imageUrl, imageUrls = [], varian
     const selected = HUB_STATE.selected[section].get(key);
     const selectedMode = selected?._hubCharacterMode || "";
     const danbooruUrl = getDanbooruUrl(section, item);
+    const showSourceButton = section === "artist" || section === "character";
     const favoriteMap = getFavoritesMap(section);
 
     const overlay = createEl("div", "anima-hub-overlay-panel");
@@ -1775,10 +2203,23 @@ function createCardOverlay(root, section, item, imageUrl, imageUrls = [], varian
             const prompt = await getPromptForItem(section, item);
             await copyText(prompt ? `${prompt}, ` : "");
         }));
-        const sourceButton = createSourceButton();
-        sourceButton.disabled = !danbooruUrl;
-        actionRow.appendChild(sourceButton);
+        if (item?.isCustom) {
+            actionRow.appendChild(createOverlayButton("分类", () => openCustomCardCategoryDialog(root, section, item)));
+        }
         actions.appendChild(actionRow);
+        if (showSourceButton) {
+            const sourceRow = createEl("div", "anima-hub-overlay-row single");
+            const sourceButton = createSourceButton();
+            sourceButton.disabled = !danbooruUrl;
+            sourceRow.appendChild(sourceButton);
+            actions.appendChild(sourceRow);
+        }
+    }
+
+    if (section === "character" && item?.isCustom) {
+        const customRow = createEl("div", "anima-hub-overlay-row single");
+        customRow.appendChild(createOverlayButton("分类", () => openCustomCardCategoryDialog(root, section, item)));
+        actions.appendChild(customRow);
     }
 
     overlay.appendChild(scroll);
@@ -1853,7 +2294,7 @@ function renderHub(root) {
     const selectedMap = HUB_STATE.selected[section];
     const favoriteMap = getFavoritesMap(section);
     const taxonomyId = getActiveTaxonomy(section);
-    const taxonomyFiltered = HUB_STATE.viewMode === "selected" ? allData : allData.filter(item => itemMatchesTaxonomy(section, item, taxonomyId));
+    const taxonomyFiltered = HUB_STATE.viewMode === "selected" ? allData : allData.filter(item => itemMatchesHubTaxonomy(section, item, taxonomyId));
     const matching = HUB_STATE.viewMode === "selected" ? taxonomyFiltered : taxonomyFiltered.filter(item => !query || getSearchText(section, item).includes(query));
     const visibleLimit = HUB_STATE.visibleLimits[section] || PAGE_SIZE;
     const filtered = matching.slice(0, visibleLimit);
@@ -2100,11 +2541,22 @@ function createHub(section, preferredNode) {
     view.appendChild(favoritesView);
     view.appendChild(selectedView);
 
+    const customTools = createEl("div", "anima-hub-custom-tools");
+    const addCategory = createEl("button", "anima-hub-pill", "新增小分类");
+    addCategory.type = "button";
+    addCategory.onclick = () => openCustomCategoryDialog(root);
+    const addCard = createEl("button", "anima-hub-pill", "新增卡片");
+    addCard.type = "button";
+    addCard.onclick = () => openCustomCardDialog(root);
+    customTools.appendChild(addCategory);
+    customTools.appendChild(addCard);
+
     const target = createEl("select", "anima-hub-target");
     target.onchange = () => {
         HUB_STATE.targetIds[HUB_STATE.activeSection] = target.value;
     };
     toolbar.appendChild(view);
+    toolbar.appendChild(customTools);
     toolbar.appendChild(sourceSelect);
     toolbar.appendChild(sourceStatus);
     toolbar.appendChild(search);
@@ -2162,7 +2614,7 @@ function createHub(section, preferredNode) {
     document.body.appendChild(overlay);
     activeHub = overlay;
     search.focus();
-    loadFavoritesConfig().then(() => renderHub(root));
+    Promise.all([loadFavoritesConfig(), loadCustomHubData()]).then(() => renderHub(root));
     renderHub(root);
 }
 
