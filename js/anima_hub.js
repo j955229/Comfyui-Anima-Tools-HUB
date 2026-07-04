@@ -20,6 +20,7 @@ const SECTIONS = [
     { id: "lighting", label: "光线", widget: "lighting_tags", accent: "#facc15" },
 ];
 
+const PAGE_SIZE = 240;
 const FAVORITES_STORAGE_KEY = "anima-hub-favorites-fallback";
 const EDITS_STORAGE_KEY = "anima-hub-card-edits";
 
@@ -48,6 +49,17 @@ const HUB_STATE = {
         expression: "",
         lighting: "",
     },
+    visibleLimits: {
+        artist: PAGE_SIZE,
+        character: PAGE_SIZE,
+        clothing: PAGE_SIZE,
+        background: PAGE_SIZE,
+        pose: PAGE_SIZE,
+        composition: PAGE_SIZE,
+        expression: PAGE_SIZE,
+        lighting: PAGE_SIZE,
+    },
+    resetScrollFor: {},
     imageVariants: {},
     imageFlipUntil: {},
     edits: {},
@@ -419,6 +431,17 @@ function getVisibleData(section) {
     return getSectionData(section);
 }
 
+function resetVisibleLimit(section) {
+    HUB_STATE.visibleLimits[section] = PAGE_SIZE;
+    HUB_STATE.resetScrollFor[section] = true;
+}
+
+function resetAllVisibleLimits() {
+    SECTIONS.forEach(section => {
+        resetVisibleLimit(section.id);
+    });
+}
+
 function applyCharacterSearch(root, query) {
     const value = String(query || "").trim();
     if (!value) return;
@@ -426,6 +449,7 @@ function applyCharacterSearch(root, query) {
     HUB_STATE.viewMode = "all";
     HUB_STATE.taxonomy.character = "all";
     HUB_STATE.searchQueries.character = value;
+    resetVisibleLimit("character");
     HUB_STATE.characterData = [];
     HUB_STATE.characterDataLoadedQuery = "";
     const search = root?.querySelector(".anima-hub-search");
@@ -534,6 +558,18 @@ function getSelectedItem(section, item, characterMode = "trigger") {
         ...item,
         _hubCharacterMode: characterMode,
     };
+}
+
+function toggleCardSelection(root, section, item, characterMode = "trigger") {
+    const key = getItemKey(section, item);
+    const selected = HUB_STATE.selected[section];
+    if (!selected) return;
+    if (selected.has(key)) {
+        selected.delete(key);
+    } else {
+        selected.set(key, getSelectedItem(section, item, section === "character" ? characterMode : "trigger"));
+    }
+    renderHub(root);
 }
 
 async function refreshArtistData(root) {
@@ -820,6 +856,7 @@ function installHubStyles() {
             transform: translateY(0) scale(1);
             transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
             will-change: transform;
+            cursor: pointer;
         }
         .anima-hub-card:hover {
             transform: translateY(-4px) scale(1.012);
@@ -978,6 +1015,11 @@ function installHubStyles() {
             background: rgba(14,165,233,0.72);
             border-color: rgba(125,211,252,0.7);
         }
+        .anima-hub-overlay-icon:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            transform: none;
+        }
         .anima-hub-overlay-scroll {
             flex: 1;
             min-height: 0;
@@ -1119,6 +1161,9 @@ function installHubStyles() {
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 7px;
         }
+        .anima-hub-overlay-row.single {
+            grid-template-columns: 1fr;
+        }
         .anima-hub-overlay-action {
             min-height: 36px;
             height: auto;
@@ -1153,6 +1198,13 @@ function installHubStyles() {
             background: rgba(255,255,255,0.05);
             border-color: rgba(255,255,255,0.12);
             color: #a1a1aa;
+        }
+        .anima-hub-load-more {
+            grid-column: 1 / -1;
+            padding: 10px 0 4px;
+            color: #a1a1aa;
+            font-size: 12px;
+            text-align: center;
         }
         .anima-hub-card-title {
             font-size: 15px;
@@ -1439,6 +1491,7 @@ function renderTaxonomyBar(root, section, rows) {
     allButton.type = "button";
     allButton.onclick = () => {
         HUB_STATE.taxonomy[section] = "all";
+        resetVisibleLimit(section);
         renderHub(root);
     };
     allButton.appendChild(createEl("span", "anima-hub-taxonomy-count", rows.length.toLocaleString()));
@@ -1456,6 +1509,7 @@ function renderTaxonomyBar(root, section, rows) {
             button.disabled = count === 0;
             button.onclick = () => {
                 HUB_STATE.taxonomy[section] = category.id;
+                resetVisibleLimit(section);
                 renderHub(root);
             };
             button.appendChild(createEl("span", "anima-hub-taxonomy-count", count.toLocaleString()));
@@ -1470,7 +1524,10 @@ function renderTaxonomyBar(root, section, rows) {
 function createOverlayButton(label, onClick, primary = false) {
     const button = createEl("button", primary ? "anima-hub-overlay-action primary" : "anima-hub-overlay-action", label);
     button.type = "button";
-    button.onclick = onClick;
+    button.onclick = event => {
+        event.stopPropagation();
+        onClick(event);
+    };
     return button;
 }
 
@@ -1582,6 +1639,15 @@ function createCardOverlay(root, section, item, imageUrl, imageUrls = [], varian
 
     const overlay = createEl("div", "anima-hub-overlay-panel");
     const top = createEl("div", "anima-hub-overlay-top");
+    const fullImageIcon = createEl("button", "anima-hub-overlay-icon", "⛶");
+    fullImageIcon.type = "button";
+    fullImageIcon.title = "Full image";
+    fullImageIcon.disabled = !imageUrl;
+    fullImageIcon.onclick = event => {
+        event.stopPropagation();
+        if (imageUrl) openImagePreview(imageUrl, getItemTitle(section, item));
+    };
+    top.appendChild(fullImageIcon);
     if (imageUrls.length > 1) {
         const variantButton = createEl("button", "anima-hub-variant-toggle", `#${variantIndex + 1}`);
         variantButton.type = "button";
@@ -1635,16 +1701,9 @@ function createCardOverlay(root, section, item, imageUrl, imageUrls = [], varian
     scroll.appendChild(tagList);
 
     const actions = createEl("div", "anima-hub-overlay-actions");
-    const topRow = createEl("div", "anima-hub-overlay-row");
-    const fullImageButton = createOverlayButton("Full Image", () => openImagePreview(imageUrl, getItemTitle(section, item)));
-    fullImageButton.disabled = !imageUrl;
-    topRow.appendChild(fullImageButton);
-    const sourceButton = createOverlayButton("Danbooru", () => {
+    const createSourceButton = () => createOverlayButton("Danbooru", () => {
         if (danbooruUrl) window.open(danbooruUrl, "_blank", "noopener,noreferrer");
     });
-    sourceButton.disabled = !danbooruUrl;
-    topRow.appendChild(sourceButton);
-    actions.appendChild(topRow);
 
     if (section === "character") {
         const selectRow = createEl("div", "anima-hub-overlay-row");
@@ -1676,26 +1735,36 @@ function createCardOverlay(root, section, item, imageUrl, imageUrls = [], varian
             await copyText(prompt ? `${prompt}, ` : "");
         }));
         actions.appendChild(copyRow);
+
+        const sourceRow = createEl("div", "anima-hub-overlay-row single");
+        const sourceButton = createSourceButton();
+        sourceButton.disabled = !danbooruUrl;
+        sourceRow.appendChild(sourceButton);
+        actions.appendChild(sourceRow);
     } else {
         const actionRow = createEl("div", "anima-hub-overlay-row");
-        actionRow.appendChild(createOverlayButton(HUB_STATE.selected[section].has(key) ? "Selected" : "Select", () => {
-            if (HUB_STATE.selected[section].has(key)) {
-                HUB_STATE.selected[section].delete(key);
-            } else {
-                HUB_STATE.selected[section].set(key, getSelectedItem(section, item));
-            }
-            renderHub(root);
-        }, HUB_STATE.selected[section].has(key)));
         actionRow.appendChild(createOverlayButton("Copy", async () => {
             const prompt = await getPromptForItem(section, item);
             await copyText(prompt ? `${prompt}, ` : "");
         }));
+        const sourceButton = createSourceButton();
+        sourceButton.disabled = !danbooruUrl;
+        actionRow.appendChild(sourceButton);
         actions.appendChild(actionRow);
     }
 
     overlay.appendChild(scroll);
     overlay.appendChild(actions);
     return overlay;
+}
+
+function shouldIgnoreCardToggle(event) {
+    const target = event.target;
+    if (!(target instanceof Element)) return true;
+    if (target.closest("button, input, textarea, select, a")) return true;
+    if (target.closest(".anima-hub-inline-edit")) return true;
+    if (target.closest(".anima-hub-overlay-trigger, .anima-hub-tag-list, .anima-hub-overlay-label-row")) return true;
+    return false;
 }
 
 function renderHub(root) {
@@ -1757,9 +1826,17 @@ function renderHub(root) {
     const favoriteMap = getFavoritesMap(section);
     const taxonomyId = getActiveTaxonomy(section);
     const taxonomyFiltered = HUB_STATE.viewMode === "selected" ? allData : allData.filter(item => itemMatchesTaxonomy(section, item, taxonomyId));
-    const filtered = HUB_STATE.viewMode === "selected" ? taxonomyFiltered.slice(0, 240) : taxonomyFiltered.filter(item => !query || getSearchText(section, item).includes(query)).slice(0, 240);
+    const matching = HUB_STATE.viewMode === "selected" ? taxonomyFiltered : taxonomyFiltered.filter(item => !query || getSearchText(section, item).includes(query));
+    const visibleLimit = HUB_STATE.visibleLimits[section] || PAGE_SIZE;
+    const filtered = matching.slice(0, visibleLimit);
 
     const grid = root.querySelector(".anima-hub-grid");
+    const previousSection = grid.dataset.section || "";
+    const shouldResetScroll = !!HUB_STATE.resetScrollFor[section];
+    const previousScrollTop = !shouldResetScroll && previousSection === section ? grid.scrollTop : 0;
+    delete HUB_STATE.resetScrollFor[section];
+    grid.dataset.section = section;
+    grid.dataset.matchingTotal = String(matching.length);
     grid.innerHTML = "";
     if (!allData.length) {
         const sourceStatusText = section === "artist" ? getArtistSourceStatus(HUB_STATE.artistSource) : "";
@@ -1793,6 +1870,10 @@ function renderHub(root) {
             const card = createEl("div", "anima-hub-card");
             card.classList.toggle("selected", selectedMap.has(key));
             card.classList.toggle("flipping", (HUB_STATE.imageFlipUntil[key] || 0) > Date.now());
+            card.onclick = event => {
+                if (shouldIgnoreCardToggle(event)) return;
+                toggleCardSelection(root, section, item, "trigger");
+            };
 
             const thumb = createEl("div", "anima-hub-thumb", "No image");
             const imageUrls = getItemImageUrls(section, item);
@@ -1809,7 +1890,6 @@ function renderHub(root) {
                 img.loading = "lazy";
                 img.src = imageUrl;
                 img.alt = `${getItemTitle(section, item)} ${variantIndex + 1}`;
-                img.onclick = () => openImagePreview(imageUrl, getItemTitle(section, item));
                 img.onerror = () => {
                     img.remove();
                     bg.remove();
@@ -1825,6 +1905,9 @@ function renderHub(root) {
             card.appendChild(thumb);
             grid.appendChild(card);
         });
+        if (filtered.length < matching.length) {
+            grid.appendChild(createEl("div", "anima-hub-load-more", `Scroll to load more (${filtered.length} / ${matching.length})`));
+        }
     }
 
     const count = root.querySelector(".anima-hub-count");
@@ -1832,6 +1915,22 @@ function renderHub(root) {
         const sourceLabel = HUB_STATE.viewMode === "favorites" ? "favorites" : "total";
         count.textContent = `${selectedMap.size} selected / ${allData.length} ${sourceLabel} / showing ${filtered.length}`;
     }
+    requestAnimationFrame(() => {
+        grid.scrollTop = previousScrollTop;
+    });
+}
+
+function handleGridScroll(root) {
+    const grid = root.querySelector(".anima-hub-grid");
+    const section = HUB_STATE.activeSection;
+    if (!grid || grid.dataset.section !== section) return;
+    const total = Number(grid.dataset.matchingTotal || "0");
+    const current = HUB_STATE.visibleLimits[section] || PAGE_SIZE;
+    if (current >= total) return;
+    const nearBottom = grid.scrollTop + grid.clientHeight >= grid.scrollHeight - 360;
+    if (!nearBottom) return;
+    HUB_STATE.visibleLimits[section] = current + PAGE_SIZE;
+    renderHub(root);
 }
 
 function switchSection(root, section) {
@@ -1850,6 +1949,7 @@ function resetHubSearchQueries() {
 function closeHub() {
     if (activeHub) {
         resetHubSearchQueries();
+        resetAllVisibleLimits();
     }
     activeHub?.remove();
     activeHub = null;
@@ -1914,6 +2014,7 @@ function createHub(section, preferredNode) {
     search.value = HUB_STATE.searchQueries[HUB_STATE.activeSection] || "";
     search.oninput = () => {
         HUB_STATE.searchQueries[HUB_STATE.activeSection] = search.value;
+        resetVisibleLimit(HUB_STATE.activeSection);
         renderHub(root);
     };
 
@@ -1924,11 +2025,13 @@ function createHub(section, preferredNode) {
             setActiveArtistSource(HUB_STATE.artistSource);
             HUB_STATE.artistDataLoadedSource = "";
             HUB_STATE.artistData = [];
+            resetVisibleLimit("artist");
         } else if (HUB_STATE.activeSection === "character") {
             HUB_STATE.characterSource = sourceSelect.value;
             setActiveCharacterSource(HUB_STATE.characterSource);
             HUB_STATE.characterDataLoadedSource = "";
             HUB_STATE.characterData = [];
+            resetVisibleLimit("character");
         }
         renderHub(root);
     };
@@ -1941,6 +2044,7 @@ function createHub(section, preferredNode) {
     allView.dataset.view = "all";
     allView.onclick = () => {
         HUB_STATE.viewMode = "all";
+        resetVisibleLimit(HUB_STATE.activeSection);
         renderHub(root);
     };
     const favoritesView = createEl("button", "anima-hub-pill", "Favorites");
@@ -1948,6 +2052,7 @@ function createHub(section, preferredNode) {
     favoritesView.dataset.view = "favorites";
     favoritesView.onclick = () => {
         HUB_STATE.viewMode = "favorites";
+        resetVisibleLimit(HUB_STATE.activeSection);
         renderHub(root);
     };
     const selectedView = createEl("button", "anima-hub-pill", "Selected 0");
@@ -1955,6 +2060,7 @@ function createHub(section, preferredNode) {
     selectedView.dataset.view = "selected";
     selectedView.onclick = () => {
         HUB_STATE.viewMode = "selected";
+        resetVisibleLimit(HUB_STATE.activeSection);
         renderHub(root);
     };
     view.appendChild(allView);
@@ -1973,6 +2079,7 @@ function createHub(section, preferredNode) {
 
     const taxonomy = createEl("div", "anima-hub-taxonomy hidden");
     const grid = createEl("div", "anima-hub-grid");
+    grid.onscroll = () => handleGridScroll(root);
 
     const footer = createEl("div", "anima-hub-footer");
     const count = createEl("div", "anima-hub-count", "");
