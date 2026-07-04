@@ -38,6 +38,29 @@ function thetaImageUrl(item) {
     return `https://fastly.jsdelivr.net/gh/ThetaCursed/Anima-Assets@main/images/${partition}/${item.id}.webp`;
 }
 
+function mooshieImageUrl(manifest, imageId) {
+    if (!imageId) return "";
+    return `${manifest.imageBaseUrl}/${manifest.releasePrefix}/images/${imageId}.avif`;
+}
+
+function mooshieImageUrls(item, manifest) {
+    if (Array.isArray(item?.images) && item.images.length) {
+        return item.images
+            .map(image => image?.imageUrl || mooshieImageUrl(manifest, image?.imageId))
+            .filter(Boolean);
+    }
+
+    const firstImageId = item?.imageId || "";
+    if (!firstImageId) return [];
+
+    const urls = [mooshieImageUrl(manifest, firstImageId)].filter(Boolean);
+    const variantCount = Number(item?.variantCount || 0);
+    if (variantCount >= 2 && /-p1$/.test(firstImageId)) {
+        urls.push(mooshieImageUrl(manifest, firstImageId.replace(/-p1$/, "-p2")));
+    }
+    return [...new Set(urls)];
+}
+
 function normalizeThetaArtist(item) {
     const name = normalizeArtistName(item?.name);
     return {
@@ -81,7 +104,8 @@ async function loadMooshieManifest() {
 function normalizeMooshieArtist(item, manifest) {
     const prompt = String(item?.tag || "").trim();
     const name = normalizeArtistName(prompt || item?.slug);
-    const imageUrl = item?.imageUrl || (item?.imageId ? `${manifest.imageBaseUrl}/${manifest.releasePrefix}/images/${item.imageId}.avif` : "");
+    const imageUrls = mooshieImageUrls(item, manifest);
+    const imageUrl = item?.imageUrl || imageUrls[0] || "";
     return {
         ...item,
         section: "artist",
@@ -94,6 +118,7 @@ function normalizeMooshieArtist(item, manifest) {
         post_count: item?.postCount ?? item?.post_count ?? 0,
         postCount: item?.postCount ?? item?.post_count ?? 0,
         imageUrl,
+        imageUrls: imageUrls.length ? imageUrls : [imageUrl].filter(Boolean),
         aliases: Array.isArray(item?.aliases) ? item.aliases : [],
     };
 }
@@ -155,6 +180,7 @@ function mergeArtists(thetaArtists, mooshieArtists) {
             post_count: Math.max(existing.post_count || 0, item.post_count || 0),
             postCount: Math.max(existing.postCount || 0, item.postCount || 0),
             imageUrl: item.imageUrl || existing.imageUrl,
+            imageUrls: item.imageUrls?.length ? item.imageUrls : existing.imageUrls,
             mooshie: item,
             theta: existing,
             aliases: [...new Set([...(existing.aliases || []), ...(item.aliases || [])])],

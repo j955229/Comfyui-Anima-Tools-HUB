@@ -301,6 +301,12 @@ function getItemImageUrl(section, item) {
     return item?.preview || item?.imageUrl || item?.thumbnailUrl || "";
 }
 
+function getItemImageUrls(section, item) {
+    const urls = Array.isArray(item?.imageUrls) ? item.imageUrls.filter(Boolean) : [];
+    const primary = getItemImageUrl(section, item);
+    return [...new Set([...urls, primary].filter(Boolean))];
+}
+
 function getDanbooruUrl(section, item) {
     if (item?.url) return item.url;
     if (section === "artist" && (item?.prompt || item?.name)) {
@@ -860,6 +866,23 @@ function installHubStyles() {
             display: block;
             background: transparent;
         }
+        .anima-hub-thumb-gallery {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            height: 100%;
+            min-height: 375px;
+            display: grid;
+            grid-template-columns: repeat(var(--anima-gallery-count, 1), minmax(0, 1fr));
+            gap: 0;
+        }
+        .anima-hub-thumb-gallery img {
+            width: 100%;
+            height: 100%;
+            min-height: 375px;
+            object-fit: contain;
+            object-position: center;
+        }
         .anima-hub-overlay-panel {
             position: absolute;
             inset: 0;
@@ -936,6 +959,59 @@ function installHubStyles() {
         .anima-hub-edit-mini:hover {
             background: rgba(14,165,233,0.34);
             border-color: rgba(56,189,248,0.58);
+        }
+        .anima-hub-inline-edit {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+        .anima-hub-inline-editor {
+            width: 100%;
+            min-height: 42px;
+            resize: vertical;
+            box-sizing: border-box;
+            border-radius: 8px;
+            border: 1px solid #22d3ee;
+            background: rgba(79,70,229,0.76);
+            color: #ffffff;
+            padding: 8px 9px;
+            font: inherit;
+            font-size: 12px;
+            font-weight: 750;
+            line-height: 1.45;
+            outline: none;
+            box-shadow: 0 0 0 1px rgba(34,211,238,0.38);
+        }
+        .anima-hub-inline-editor::selection {
+            background: rgba(168,85,247,0.72);
+            color: #ffffff;
+        }
+        .anima-hub-inline-save {
+            min-height: 24px;
+            border: 1px solid rgba(255,255,255,0.18);
+            background: rgba(255,255,255,0.08);
+            color: #f4f4f5;
+            border-radius: 999px;
+            padding: 3px 9px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 800;
+        }
+        .anima-hub-inline-save:hover {
+            background: rgba(14,165,233,0.34);
+            border-color: rgba(56,189,248,0.58);
+        }
+        .anima-hub-editable-line {
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+        .anima-hub-editable-line .anima-hub-overlay-trigger {
+            flex: 1;
+            margin-bottom: 0;
         }
         .anima-hub-overlay-trigger {
             font-size: 12px;
@@ -1304,36 +1380,71 @@ function createEditButton(label, onClick) {
     return button;
 }
 
-function editCardField(root, section, item, field, currentValue) {
+function saveInlineEdit(root, section, item, field, value) {
     const label = field === "trigger" ? "Trigger" : "Tags";
-    const next = window.prompt(`Edit ${label}`, currentValue || "");
-    if (next === null) return;
-    setItemEdit(section, item, { [field]: next.trim() });
+    setItemEdit(section, item, { [field]: String(value || "").trim() });
     renderHub(root);
     showToast(`${label} updated`);
 }
 
-function fillOverlayTags(tagContainer, tags, onTagClick = null) {
+function startInlineEdit(root, section, item, field, mount, currentValue) {
+    const label = field === "trigger" ? "Trigger" : "Tags";
+    mount.dataset.editing = "true";
+    mount.innerHTML = "";
+
+    const wrap = createEl("div", "anima-hub-inline-edit");
+    const textarea = createEl("textarea", "anima-hub-inline-editor");
+    textarea.value = currentValue || "";
+    textarea.rows = field === "tags" ? 4 : 2;
+    textarea.addEventListener("mousedown", event => event.stopPropagation());
+    textarea.addEventListener("keydown", event => {
+        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+            saveInlineEdit(root, section, item, field, textarea.value);
+        }
+        if (event.key === "Escape") {
+            renderHub(root);
+        }
+    });
+
+    const save = createEl("button", "anima-hub-inline-save", `↙ ${label}`);
+    save.type = "button";
+    save.onclick = event => {
+        event.stopPropagation();
+        saveInlineEdit(root, section, item, field, textarea.value);
+    };
+
+    wrap.appendChild(textarea);
+    wrap.appendChild(save);
+    mount.appendChild(wrap);
+    setTimeout(() => {
+        textarea.focus();
+        textarea.select();
+    }, 0);
+}
+
+function fillOverlayTags(tagContainer, tags, onTagClick = null, editButton = null) {
+    if (tagContainer.dataset.editing === "true") return;
     tagContainer.innerHTML = "";
     const limited = tags.slice(0, 18);
     if (!limited.length) {
         tagContainer.appendChild(createEl("span", "anima-hub-tag-chip", "No tags"));
-        return;
+    } else {
+        limited.forEach(tag => {
+            if (onTagClick) {
+                const button = createEl("button", "anima-hub-tag-chip", tag);
+                button.type = "button";
+                button.title = `Search ${tag}`;
+                button.onclick = event => {
+                    event.stopPropagation();
+                    onTagClick(tag);
+                };
+                tagContainer.appendChild(button);
+                return;
+            }
+            tagContainer.appendChild(createEl("span", "anima-hub-tag-chip", tag));
+        });
     }
-    limited.forEach(tag => {
-        if (onTagClick) {
-            const button = createEl("button", "anima-hub-tag-chip", tag);
-            button.type = "button";
-            button.title = `Search ${tag}`;
-            button.onclick = event => {
-                event.stopPropagation();
-                onTagClick(tag);
-            };
-            tagContainer.appendChild(button);
-            return;
-        }
-        tagContainer.appendChild(createEl("span", "anima-hub-tag-chip", tag));
-    });
+    if (editButton) tagContainer.appendChild(editButton);
 }
 
 function createCardCaption(root, section, item) {
@@ -1383,25 +1494,28 @@ function createCardOverlay(root, section, item, imageUrl) {
     const triggerRow = createEl("div", "anima-hub-overlay-label-row");
     triggerRow.appendChild(createEl("div", "anima-hub-overlay-label", "Trigger"));
     const trigger = createEl("div", "anima-hub-overlay-trigger", section === "artist" ? `@${item?.name || ""}` : getItemTitle(section, item));
-    triggerRow.appendChild(createEditButton("Edit", async () => {
-        editCardField(root, section, item, "trigger", await getPromptForItem(section, item, "trigger"));
-    }));
     scroll.appendChild(triggerRow);
     getPromptForItem(section, item, "trigger").then(prompt => {
         if (prompt) trigger.textContent = prompt;
     });
-    scroll.appendChild(trigger);
+    const triggerMount = createEl("div", "anima-hub-editable-line");
+    triggerMount.appendChild(trigger);
+    triggerMount.appendChild(createEditButton("✎", async () => {
+        startInlineEdit(root, section, item, "trigger", triggerMount, await getPromptForItem(section, item, "trigger"));
+    }));
+    scroll.appendChild(triggerMount);
+
     const tagsRow = createEl("div", "anima-hub-overlay-label-row");
     tagsRow.appendChild(createEl("div", "anima-hub-overlay-label", "Tags"));
-    tagsRow.appendChild(createEditButton("Edit", async () => {
-        const tags = await getDisplayTags(section, item);
-        editCardField(root, section, item, "tags", tags.join(", "));
-    }));
     scroll.appendChild(tagsRow);
     const tagList = createEl("div", "anima-hub-tag-list");
     const onTagClick = section === "character" ? tag => applyCharacterSearch(root, tag) : null;
-    fillOverlayTags(tagList, splitPromptTokens(getEditedTags(section, item, item?.tags || item?.name || "")), onTagClick);
-    getDisplayTags(section, item).then(tags => fillOverlayTags(tagList, tags, onTagClick));
+    const createTagsEditButton = tags => createEditButton("✎", () => {
+        startInlineEdit(root, section, item, "tags", tagList, tags.join(", "));
+    });
+    const initialTags = splitPromptTokens(getEditedTags(section, item, item?.tags || item?.name || ""));
+    fillOverlayTags(tagList, initialTags, onTagClick, createTagsEditButton(initialTags));
+    getDisplayTags(section, item).then(tags => fillOverlayTags(tagList, tags, onTagClick, createTagsEditButton(tags)));
     scroll.appendChild(tagList);
 
     const actions = createEl("div", "anima-hub-overlay-actions");
@@ -1557,23 +1671,32 @@ function renderHub(root) {
             card.classList.toggle("selected", selectedMap.has(key));
 
             const thumb = createEl("div", "anima-hub-thumb", "No image");
-            const imageUrl = getItemImageUrl(section, item);
-            if (imageUrl) {
+            const imageUrls = getItemImageUrls(section, item);
+            const imageUrl = imageUrls[0] || "";
+            if (imageUrls.length) {
                 thumb.textContent = "";
                 const bg = createEl("div", "anima-hub-thumb-bg");
                 bg.style.backgroundImage = `url("${imageUrl.replaceAll('"', "%22")}")`;
                 thumb.appendChild(bg);
-                const img = document.createElement("img");
-                img.loading = "lazy";
-                img.src = imageUrl;
-                img.alt = getItemTitle(section, item);
-                img.onclick = () => openImagePreview(imageUrl, getItemTitle(section, item));
-                img.onerror = () => {
-                    img.remove();
-                    bg.remove();
-                    thumb.textContent = "No image";
-                };
-                thumb.appendChild(img);
+
+                const gallery = createEl("div", "anima-hub-thumb-gallery");
+                gallery.style.setProperty("--anima-gallery-count", String(Math.min(imageUrls.length, 2)));
+                imageUrls.slice(0, 2).forEach((url, index) => {
+                    const img = document.createElement("img");
+                    img.loading = "lazy";
+                    img.src = url;
+                    img.alt = `${getItemTitle(section, item)} ${index + 1}`;
+                    img.onclick = () => openImagePreview(url, getItemTitle(section, item));
+                    img.onerror = () => {
+                        img.remove();
+                        if (!gallery.querySelector("img")) {
+                            bg.remove();
+                            thumb.textContent = "No image";
+                        }
+                    };
+                    gallery.appendChild(img);
+                });
+                thumb.appendChild(gallery);
             }
             thumb.appendChild(createCardOverlay(root, section, item, imageUrl));
 
