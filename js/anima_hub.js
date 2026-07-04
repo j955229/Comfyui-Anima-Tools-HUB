@@ -898,10 +898,6 @@ function installHubStyles() {
             backface-visibility: hidden;
         }
         .anima-hub-variant-toggle {
-            position: absolute;
-            right: 10px;
-            top: 50px;
-            z-index: 6;
             min-width: 36px;
             height: 28px;
             border-radius: 999px;
@@ -1291,12 +1287,12 @@ function installHubStyles() {
                 transform: rotateY(0deg) translateZ(0);
                 filter: brightness(1);
             }
-            45% {
-                transform: rotateY(88deg) translateZ(20px);
+            50% {
+                transform: rotateY(180deg) translateZ(20px);
                 filter: brightness(1.28) saturate(1.18);
             }
             100% {
-                transform: rotateY(0deg) translateZ(0);
+                transform: rotateY(360deg) translateZ(0);
                 filter: brightness(1);
             }
         }
@@ -1558,7 +1554,7 @@ function createCardCaption(root, section, item) {
     return caption;
 }
 
-function createCardOverlay(root, section, item, imageUrl) {
+function createCardOverlay(root, section, item, imageUrl, imageUrls = [], variantIndex = 0) {
     const key = getItemKey(section, item);
     const selected = HUB_STATE.selected[section].get(key);
     const selectedMode = selected?._hubCharacterMode || "";
@@ -1567,6 +1563,18 @@ function createCardOverlay(root, section, item, imageUrl) {
 
     const overlay = createEl("div", "anima-hub-overlay-panel");
     const top = createEl("div", "anima-hub-overlay-top");
+    if (imageUrls.length > 1) {
+        const variantButton = createEl("button", "anima-hub-variant-toggle", `#${variantIndex + 1}`);
+        variantButton.type = "button";
+        variantButton.title = "Switch image";
+        variantButton.onclick = event => {
+            event.stopPropagation();
+            HUB_STATE.imageVariants[key] = (variantIndex + 1) % imageUrls.length;
+            HUB_STATE.imageFlipUntil[key] = Date.now() + 720;
+            renderHub(root);
+        };
+        top.appendChild(variantButton);
+    }
     const favorite = createEl("button", favoriteMap.has(key) ? "anima-hub-overlay-icon active" : "anima-hub-overlay-icon", favoriteMap.has(key) ? "♥" : "♡");
     favorite.type = "button";
     favorite.title = favoriteMap.has(key) ? "移除收藏" : "加入收藏";
@@ -1783,21 +1791,8 @@ function renderHub(root) {
                 };
                 imageWrap.appendChild(img);
                 thumb.appendChild(imageWrap);
-
-                if (imageUrls.length > 1) {
-                    const variantButton = createEl("button", "anima-hub-variant-toggle", `#${variantIndex + 1}`);
-                    variantButton.type = "button";
-                    variantButton.title = "Switch image";
-                    variantButton.onclick = event => {
-                        event.stopPropagation();
-                        HUB_STATE.imageVariants[key] = (variantIndex + 1) % imageUrls.length;
-                        HUB_STATE.imageFlipUntil[key] = Date.now() + 720;
-                        renderHub(root);
-                    };
-                    thumb.appendChild(variantButton);
-                }
             }
-            thumb.appendChild(createCardOverlay(root, section, item, imageUrl));
+            thumb.appendChild(createCardOverlay(root, section, item, imageUrl, imageUrls, variantIndex));
 
             thumb.appendChild(createCardCaption(root, section, item));
 
