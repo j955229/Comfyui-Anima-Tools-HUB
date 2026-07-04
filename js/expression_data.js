@@ -201,23 +201,6 @@ const expressionData = [
   },
   {
     "id": "expression_0013",
-    "name": "Pout",
-    "name_zh": "Pout",
-    "tags": "pout, pouting, puffed cheeks,",
-    "tags_zh": "pout, pouting, puffed cheeks,",
-    "categories": [
-      "表情"
-    ],
-    "traits": [
-      "pout",
-      "pouting",
-      "puffed cheeks"
-    ],
-    "folder": "wildcards/image/expression",
-    "preview": "/anima-tools/wildcard-image/expression/2026-07-05_12.png"
-  },
-  {
-    "id": "expression_0014",
     "name": "Tongue Out",
     "name_zh": "Tongue Out",
     "tags": "tongue out, tongue, playful,",
@@ -231,10 +214,10 @@ const expressionData = [
       "playful"
     ],
     "folder": "wildcards/image/expression",
-    "preview": "/anima-tools/wildcard-image/expression/2026-07-05_13.png"
+    "preview": "/anima-tools/wildcard-image/expression/2026-07-05_12.png"
   },
   {
-    "id": "expression_0015",
+    "id": "expression_0014",
     "name": "Clenched Teeth",
     "name_zh": "Clenched Teeth",
     "tags": "clenched teeth, teeth, grimace,",
@@ -248,27 +231,10 @@ const expressionData = [
       "grimace"
     ],
     "folder": "wildcards/image/expression",
-    "preview": "/anima-tools/wildcard-image/expression/2026-07-05_14.png"
+    "preview": "/anima-tools/wildcard-image/expression/2026-07-05_13.png"
   },
   {
-    "id": "expression_0016",
-    "name": "Wavy Mouth",
-    "name_zh": "Wavy Mouth",
-    "tags": "wavy mouth, uneasy, embarrassed,",
-    "tags_zh": "wavy mouth, uneasy, embarrassed,",
-    "categories": [
-      "表情"
-    ],
-    "traits": [
-      "wavy mouth",
-      "uneasy",
-      "embarrassed"
-    ],
-    "folder": "wildcards/image/expression",
-    "preview": "/anima-tools/wildcard-image/expression/2026-07-05_15.png"
-  },
-  {
-    "id": "expression_0017",
+    "id": "expression_0015",
     "name": "Half-closed Eyes",
     "name_zh": "Half-closed Eyes",
     "tags": "half-closed eyes, sleepy, relaxed,",
@@ -282,10 +248,10 @@ const expressionData = [
       "relaxed"
     ],
     "folder": "wildcards/image/expression",
-    "preview": "/anima-tools/wildcard-image/expression/2026-07-05_16.png"
+    "preview": "/anima-tools/wildcard-image/expression/2026-07-05_14.png"
   },
   {
-    "id": "expression_0018",
+    "id": "expression_0016",
     "name": "Wide Eyes",
     "name_zh": "Wide Eyes",
     "tags": "wide eyes, surprised, staring,",
@@ -299,10 +265,10 @@ const expressionData = [
       "staring"
     ],
     "folder": "wildcards/image/expression",
-    "preview": "/anima-tools/wildcard-image/expression/2026-07-05_17.png"
+    "preview": "/anima-tools/wildcard-image/expression/2026-07-05_15.png"
   },
   {
-    "id": "expression_0019",
+    "id": "expression_0017",
     "name": "Sparkling Eyes",
     "name_zh": "Sparkling Eyes",
     "tags": "sparkling eyes, starry eyes, excited,",
@@ -316,10 +282,10 @@ const expressionData = [
       "excited"
     ],
     "folder": "wildcards/image/expression",
-    "preview": "/anima-tools/wildcard-image/expression/2026-07-05_18.png"
+    "preview": "/anima-tools/wildcard-image/expression/2026-07-05_16.png"
   },
   {
-    "id": "expression_0020",
+    "id": "expression_0018",
     "name": "Heart-shaped Pupils",
     "name_zh": "Heart-shaped Pupils",
     "tags": "heart-shaped pupils, heart eyes, love,",
@@ -333,10 +299,10 @@ const expressionData = [
       "love"
     ],
     "folder": "wildcards/image/expression",
-    "preview": "/anima-tools/wildcard-image/expression/2026-07-05_19.png"
+    "preview": "/anima-tools/wildcard-image/expression/2026-07-05_17.png"
   },
   {
-    "id": "expression_0021",
+    "id": "expression_0019",
     "name": "Blush",
     "name_zh": "Blush",
     "tags": "blush, embarrassed, red cheeks,",
@@ -350,21 +316,38 @@ const expressionData = [
       "red cheeks"
     ],
     "folder": "wildcards/image/expression",
-    "preview": "/anima-tools/wildcard-image/expression/2026-07-05_20.png"
+    "preview": "/anima-tools/wildcard-image/expression/2026-07-05_18.png"
   },
   {
-    "id": "expression_0022",
-    "name": "Sweatdrop",
-    "name_zh": "Sweatdrop",
-    "tags": "sweatdrop, nervous, embarrassed,",
-    "tags_zh": "sweatdrop, nervous, embarrassed,",
+    "id": "expression_0020",
+    "name": "Expressionless",
+    "name_zh": "Expressionless",
+    "tags": "expressionless, blank stare, emotionless,",
+    "tags_zh": "expressionless, blank stare, emotionless,",
     "categories": [
       "表情"
     ],
     "traits": [
-      "sweatdrop",
-      "nervous",
-      "embarrassed"
+      "expressionless",
+      "blank stare",
+      "emotionless"
+    ],
+    "folder": "wildcards/image/expression",
+    "preview": "/anima-tools/wildcard-image/expression/2026-07-05_20.png"
+  },
+  {
+    "id": "expression_0021",
+    "name": "Smug",
+    "name_zh": "Smug",
+    "tags": "smug, smug face, confident,",
+    "tags_zh": "smug, smug face, confident,",
+    "categories": [
+      "表情"
+    ],
+    "traits": [
+      "smug",
+      "smug face",
+      "confident"
     ],
     "folder": "wildcards/image/expression",
     "preview": "/anima-tools/wildcard-image/expression/2026-07-05_21.png"
