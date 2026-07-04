@@ -1,24 +1,24 @@
-high angle, from above, looking down
-low angle, from below, looking up
-worm's-eye view, extreme low angle, from below
-bird's-eye view, overhead view, from above
-dutch angle, tilted angle, diagonal composition
-pov, point of view, first-person view
-over shoulder, over-the-shoulder shot, from behind
-profile, side view, looking to the side
-extreme close-up, close-up, face focus
-close-up, portrait, face focus
-upper body, portrait, medium close-up
-cowboy shot, knees up, medium shot
-full body, standing, full-length portrait
-wide shot, long shot, scenery focus
-centered composition, centered, symmetrical composition
-rule of thirds, off-center, balanced composition
-symmetrical composition, symmetry, centered
-diagonal composition, dynamic angle, dutch angle
-frame within frame, doorway, window frame
-negative space, minimalism, simple background
-depth of field, blurry background, focus blur
-blurry foreground, foreground blur, depth of field
-forced perspective, perspective, foreshortening
-fisheye, fisheye lens, wide-angle lens
+high angle shot, camera above the character looking down, floor visible behind the character
+low angle shot, camera below waist level looking up, sky or ceiling visible behind the character
+worm's-eye view, camera placed near the floor, extreme low angle looking upward
+bird's-eye view, overhead camera directly above the character, top-down composition
+dutch angle, tilted camera horizon, diagonal composition with slanted background lines
+first-person pov shot, viewer perspective, hands or foreground body parts near the camera
+over-the-shoulder shot, blurred shoulder in foreground, camera behind another person
+strict profile view, side camera angle, character facing left or right
+extreme close-up, eyes and face fill the frame, cropped forehead and chin
+close-up portrait, head and shoulders fill most of the frame, face focus
+upper body shot, waist-up framing, arms and torso visible
+cowboy shot, knees-up framing, medium full figure portrait
+full body shot, head-to-toe character visible, feet fully inside the frame
+wide shot, character small in the environment, large background area visible
+centered composition, character placed exactly in the middle, balanced symmetrical frame
+rule of thirds composition, character placed off-center, empty space on one side
+symmetrical composition, mirrored left-right balance, central vanishing point
+diagonal composition, strong diagonal lines crossing the frame, dynamic slanted layout
+frame within frame, character seen through doorway or window frame, nested composition
+negative space composition, small character with large empty background area
+shallow depth of field, sharp character with strongly blurred background
+blurry foreground, foreground object out of focus in front of the character
+forced perspective, exaggerated near-far scale difference, foreshortened body parts
+fisheye lens shot, wide-angle distortion, curved background edges

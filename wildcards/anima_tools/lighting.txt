@@ -1,24 +1,24 @@
-backlighting, backlight, silhouette
-rim lighting, rim light, edge light
-side lighting, sidelighting, side light
-underlighting, underlight, lit from below
-overhead lighting, top light, hard shadows
-soft lighting, soft light, gentle shadows
-hard lighting, hard light, sharp shadows
-dramatic lighting, high contrast, deep shadows
-cinematic lighting, film lighting, dramatic shadows
-chiaroscuro, tenebrism, high contrast
-volumetric lighting, light rays, atmosphere
-god rays, crepuscular rays, light rays
-lens flare, light leak, bloom
-bloom, glow, glowing
-bokeh, blurry background, depth of field
-golden hour, sunset, warm lighting
-blue hour, dusk, cool lighting
-moonlight, night, cool lighting
-sunlight, sunshine, natural lighting
-dappled sunlight, tree shadow, sunlight
-neon lighting, neon lights, cyberpunk
-colored lighting, colorful lighting, colored light
-warm lighting, warm light, orange lighting
-cool lighting, blue lighting, cold light
+backlighting, strong light behind the character, bright rim around silhouette, face partially in shadow
+rim lighting, thin glowing edge light around hair and shoulders, dark front lighting
+side lighting, key light from the left side only, one side of face in shadow
+underlighting, light source below the chin, upward shadows on face, eerie stage lighting
+overhead lighting, top-down spotlight, shadows under eyes and nose, bright head and shoulders
+soft diffused lighting, large softbox light, gentle low contrast shadows
+hard direct lighting, sharp cast shadows, crisp shadow edges
+dramatic high contrast lighting, deep black shadows, bright focused highlights
+cinematic film lighting, moody key light, controlled shadows, movie still
+chiaroscuro lighting, strong light-dark separation, large areas of darkness
+volumetric lighting, visible light beams through haze, atmospheric dust
+god rays, sunlight beams from above, bright shafts of light through air
+lens flare, strong light hitting camera lens, rainbow flare streaks
+heavy bloom, glowing highlights, overexposed light glow
+bokeh lights, out-of-focus background light circles, shallow depth of field
+golden hour lighting, low warm sunset sun, long orange shadows
+blue hour lighting, deep blue dusk ambient light, cool twilight mood
+moonlight scene, cold blue moonlight, dark night shadows
+direct sunlight, bright midday sun, clear strong natural shadows
+dappled sunlight, leaf shadows across face and clothes, broken sunlight pattern
+neon lighting, vivid magenta and cyan neon signs, cyberpunk color cast
+colored gel lighting, split red and blue lights on opposite sides
+warm orange lamp light, cozy amber indoor lighting, soft warm shadows
+cool blue lighting, cold cyan ambient light, pale blue shadows

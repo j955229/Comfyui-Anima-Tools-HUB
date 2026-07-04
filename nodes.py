@@ -659,6 +659,130 @@ class AnimaLightingTagSelectorPlus(_AnimaPlainTagSelectorPlusBase):
     def process_tags(self, lighting_tags, extra_text, separator=", "):
         return self._process_plain_tags_plus(lighting_tags, extra_text, separator)
 
+def _anima_clean_prompt_tags(value):
+    if not value or not str(value).strip():
+        return ""
+    return ", ".join([tag.strip() for tag in str(value).split(",") if tag.strip()])
+
+class AnimaCharacterSpec:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "name": ("STRING", {"multiline": True, "default": ""}),
+            },
+            "optional": {
+                "appearance": ("STRING", {"multiline": True, "default": ""}),
+                "clothes": ("STRING", {"multiline": True, "default": ""}),
+                "expression": ("STRING", {"multiline": True, "default": ""}),
+                "action": ("STRING", {"multiline": True, "default": ""}),
+            }
+        }
+
+    RETURN_TYPES = ("CHARACTER_PROMPT",)
+    RETURN_NAMES = ("char_prompt",)
+    FUNCTION = "generate_char_block"
+    CATEGORY = "AnimaArt/Prompt Builder"
+
+    def generate_char_block(self, name, appearance=None, clothes=None, expression=None, action=None):
+        if not name or not str(name).strip():
+            return ("",)
+        parts = [name, appearance, clothes, expression, action]
+        cleaned = []
+        for part in parts:
+            text = _anima_clean_prompt_tags(part)
+            if text:
+                cleaned.append(text)
+        return (", ".join(cleaned),)
+
+class AnimaSceneCollector:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "background": ("STRING", {"multiline": True, "default": ""}),
+                "composition": ("STRING", {"multiline": True, "default": ""}),
+            },
+            "optional": {
+                "lighting": ("STRING", {"multiline": True, "default": ""}),
+                "character1": ("CHARACTER_PROMPT",),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("char_bg_comp_string",)
+    FUNCTION = "collect_scene"
+    CATEGORY = "AnimaArt/Prompt Builder"
+
+    def collect_scene(self, background, composition, lighting=None, character1=None, **kwargs):
+        formatted_lines = []
+        all_chars = {}
+        if character1 and str(character1).strip():
+            all_chars[1] = str(character1).strip()
+        for key, value in kwargs.items():
+            if key.startswith("character") and value and str(value).strip():
+                try:
+                    all_chars[int(key.replace("character", ""))] = str(value).strip()
+                except ValueError:
+                    pass
+
+        for number in sorted(all_chars.keys()):
+            formatted_lines.append(f"character{number}: {all_chars[number]}")
+
+        background_cleaned = _anima_clean_prompt_tags(background)
+        if background_cleaned:
+            formatted_lines.append(f"background: {background_cleaned}")
+
+        composition_cleaned = _anima_clean_prompt_tags(composition)
+        if composition_cleaned:
+            formatted_lines.append(f"composition: {composition_cleaned}")
+
+        lighting_cleaned = _anima_clean_prompt_tags(lighting)
+        if lighting_cleaned:
+            formatted_lines.append(f"lighting: {lighting_cleaned}")
+
+        return ("\n\n".join(formatted_lines),)
+
+class AnimaFinalAssembler:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "tags": ("STRING", {"multiline": True, "default": "masterpiece, very aesthetic, absurdres, best quality, year 2025, newest, safe, 1girl, solo"}),
+                "lora_trigger": ("STRING", {"multiline": True, "default": ""}),
+                "artist": ("STRING", {"multiline": True, "default": ""}),
+                "char_bg_comp_string": ("STRING", {"multiline": True, "default": ""}),
+                "natural_language": ("STRING", {"multiline": True, "default": ""}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("prompt_string",)
+    FUNCTION = "assemble_final"
+    CATEGORY = "AnimaArt/Prompt Builder"
+
+    def assemble_final(self, tags, lora_trigger, artist, char_bg_comp_string, natural_language):
+        formatted_lines = []
+        tags_cleaned = _anima_clean_prompt_tags(tags)
+        if tags_cleaned:
+            formatted_lines.append(f"tags: {tags_cleaned}")
+
+        lora_cleaned = _anima_clean_prompt_tags(lora_trigger)
+        if lora_cleaned:
+            formatted_lines.append(lora_cleaned)
+
+        artist_cleaned = _anima_clean_prompt_tags(artist)
+        if artist_cleaned:
+            formatted_lines.append(f"artist: {artist_cleaned}")
+
+        if char_bg_comp_string and str(char_bg_comp_string).strip():
+            formatted_lines.append(str(char_bg_comp_string).strip())
+
+        if natural_language and str(natural_language).strip():
+            formatted_lines.append(str(natural_language).strip())
+
+        return ("\n\n".join(formatted_lines),)
+
 class AnimaPromptPlus:
     @classmethod
     def INPUT_TYPES(cls):
@@ -1323,6 +1447,9 @@ NODE_CLASS_MAPPINGS = {
     "AnimaExpressionTagSelectorPlus": AnimaExpressionTagSelectorPlus,
     "AnimaLightingTagSelector": AnimaLightingTagSelector,
     "AnimaLightingTagSelectorPlus": AnimaLightingTagSelectorPlus,
+    "AnimaCharacterSpec": AnimaCharacterSpec,
+    "AnimaSceneCollector": AnimaSceneCollector,
+    "AnimaFinalAssembler": AnimaFinalAssembler,
     "AnimaPromptPlus": AnimaPromptPlus,
     "AnimaPromptComposer": AnimaPromptComposer,
     "AnimaMultiLoraLoader": AnimaMultiLoraLoader,
@@ -1346,6 +1473,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AnimaExpressionTagSelectorPlus": "Anima Expression Tag Selector+",
     "AnimaLightingTagSelector": "Anima Lighting Tag Selector",
     "AnimaLightingTagSelectorPlus": "Anima Lighting Tag Selector+",
+    "AnimaCharacterSpec": "Anima Character Spec",
+    "AnimaSceneCollector": "Anima Scene Collector",
+    "AnimaFinalAssembler": "Anima Final Assembler",
     "AnimaPromptPlus": "Anima Prompt Plus",
     "AnimaPromptComposer": "Anima Prompt Random Draw",
     "AnimaMultiLoraLoader": "Anima Multi LoRA Loader",
