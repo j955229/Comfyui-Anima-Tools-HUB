@@ -207,7 +207,7 @@ function getItemTitle(section, item) {
 
 function getItemMeta(section, item) {
     if (section === "artist") return [item?.sourceLabel, `${item?.post_count ?? item?.postCount ?? 0} works`].filter(Boolean).join(" / ");
-    if (section === "character") return [item?.copyright, item?.post_count ? `${item.post_count} works` : ""].filter(Boolean).join(" / ");
+    if (section === "character") return item?.copyright || "";
     return [item?.categories?.[0], item?.traits?.slice?.(0, 3)?.join(", ")].filter(Boolean).join(" / ");
 }
 
@@ -333,6 +333,19 @@ function getVisibleData(section) {
         return Array.from(getFavoritesMap(section).values());
     }
     return getSectionData(section);
+}
+
+function applyCharacterSearch(root, query) {
+    const value = String(query || "").trim();
+    if (!value) return;
+    HUB_STATE.activeSection = "character";
+    HUB_STATE.viewMode = "all";
+    HUB_STATE.taxonomy.character = "all";
+    HUB_STATE.characterData = [];
+    HUB_STATE.characterDataLoadedQuery = "";
+    const search = root?.querySelector(".anima-hub-search");
+    if (search) search.value = value;
+    renderHub(root);
 }
 
 function sectionUsesTaxonomy(section) {
@@ -700,14 +713,14 @@ function installHubStyles() {
             padding: 14px 16px 18px;
             overflow: auto;
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
             gap: 14px;
             align-content: start;
         }
         .anima-hub-card {
             position: relative;
-            height: clamp(440px, 34vw, 620px);
-            min-height: 440px;
+            height: clamp(500px, 38vw, 700px);
+            min-height: 500px;
             border-radius: 8px;
             border: 1px solid rgba(255,255,255,0.09);
             background: rgba(255,255,255,0.035);
@@ -726,7 +739,7 @@ function installHubStyles() {
             position: relative;
             width: 100%;
             height: 100%;
-            min-height: 440px;
+            min-height: 500px;
             border-radius: 0;
             overflow: hidden;
             background: #202329;
@@ -740,8 +753,9 @@ function installHubStyles() {
         .anima-hub-thumb img {
             width: 100%;
             height: 100%;
-            min-height: 440px;
-            object-fit: contain;
+            min-height: 500px;
+            object-fit: cover;
+            object-position: center top;
             display: block;
             background: #2b2d31;
         }
@@ -827,6 +841,15 @@ function installHubStyles() {
             max-width: 100%;
             overflow-wrap: anywhere;
         }
+        button.anima-hub-tag-chip {
+            cursor: pointer;
+            text-align: left;
+            font-family: inherit;
+        }
+        button.anima-hub-tag-chip:hover {
+            background: rgba(14,165,233,0.34);
+            border-color: rgba(56,189,248,0.58);
+        }
         .anima-hub-overlay-actions {
             flex: 0 0 auto;
             display: flex;
@@ -908,6 +931,24 @@ function installHubStyles() {
             font-size: 11px;
             font-weight: 800;
             color: #a9a6c8;
+        }
+        .anima-hub-meta-link {
+            display: inline;
+            border: 0;
+            background: transparent;
+            color: #a9a6c8;
+            cursor: pointer;
+            font: inherit;
+            letter-spacing: inherit;
+            padding: 0;
+            text-align: left;
+            text-transform: uppercase;
+            pointer-events: auto;
+        }
+        .anima-hub-meta-link:hover {
+            color: #ffffff;
+            text-decoration: underline;
+            text-underline-offset: 3px;
         }
         .anima-hub-card-action {
             min-height: 32px;
@@ -1128,7 +1169,7 @@ function createOverlayButton(label, onClick, primary = false) {
     return button;
 }
 
-function fillOverlayTags(tagContainer, tags) {
+function fillOverlayTags(tagContainer, tags, onTagClick = null) {
     tagContainer.innerHTML = "";
     const limited = tags.slice(0, 18);
     if (!limited.length) {
@@ -1136,8 +1177,41 @@ function fillOverlayTags(tagContainer, tags) {
         return;
     }
     limited.forEach(tag => {
+        if (onTagClick) {
+            const button = createEl("button", "anima-hub-tag-chip", tag);
+            button.type = "button";
+            button.title = `Search ${tag}`;
+            button.onclick = event => {
+                event.stopPropagation();
+                onTagClick(tag);
+            };
+            tagContainer.appendChild(button);
+            return;
+        }
         tagContainer.appendChild(createEl("span", "anima-hub-tag-chip", tag));
     });
+}
+
+function createCardCaption(root, section, item) {
+    const caption = createEl("div", "anima-hub-card-caption");
+    caption.appendChild(createEl("div", "anima-hub-card-title", getItemTitle(section, item)));
+
+    const metaText = getItemMeta(section, item) || item?.tags || "";
+    const meta = createEl("div", "anima-hub-card-meta");
+    if (section === "character" && item?.copyright) {
+        const series = createEl("button", "anima-hub-meta-link", item.copyright);
+        series.type = "button";
+        series.title = `Search ${item.copyright}`;
+        series.onclick = event => {
+            event.stopPropagation();
+            applyCharacterSearch(root, item.copyright);
+        };
+        meta.appendChild(series);
+    } else {
+        meta.textContent = metaText;
+    }
+    caption.appendChild(meta);
+    return caption;
 }
 
 function createCardOverlay(root, section, item, imageUrl) {
@@ -1170,8 +1244,9 @@ function createCardOverlay(root, section, item, imageUrl) {
     scroll.appendChild(trigger);
     scroll.appendChild(createEl("div", "anima-hub-overlay-label", "Tags"));
     const tagList = createEl("div", "anima-hub-tag-list");
-    fillOverlayTags(tagList, splitPromptTokens(item?.tags || item?.name || ""));
-    getDisplayTags(section, item).then(tags => fillOverlayTags(tagList, tags));
+    const onTagClick = section === "character" ? tag => applyCharacterSearch(root, tag) : null;
+    fillOverlayTags(tagList, splitPromptTokens(item?.tags || item?.name || ""), onTagClick);
+    getDisplayTags(section, item).then(tags => fillOverlayTags(tagList, tags, onTagClick));
     scroll.appendChild(tagList);
 
     const actions = createEl("div", "anima-hub-overlay-actions");
@@ -1331,10 +1406,7 @@ function renderHub(root) {
             }
             thumb.appendChild(createCardOverlay(root, section, item, imageUrl));
 
-            const caption = createEl("div", "anima-hub-card-caption");
-            caption.appendChild(createEl("div", "anima-hub-card-title", getItemTitle(section, item)));
-            caption.appendChild(createEl("div", "anima-hub-card-meta", getItemMeta(section, item) || item?.tags || ""));
-            thumb.appendChild(caption);
+            thumb.appendChild(createCardCaption(root, section, item));
 
             card.appendChild(thumb);
             grid.appendChild(card);
