@@ -42,6 +42,8 @@ const HUB_STATE = {
         background: "",
         pose: "",
     },
+    imageVariants: {},
+    imageFlipUntil: {},
     edits: {},
     selected: {
         artist: new Map(),
@@ -800,6 +802,14 @@ function installHubStyles() {
             gap: 0;
             box-sizing: border-box;
             overflow: hidden;
+            transform: translateY(0) scale(1);
+            transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+            will-change: transform;
+        }
+        .anima-hub-card:hover {
+            transform: translateY(-4px) scale(1.012);
+            border-color: rgba(255,255,255,0.2);
+            box-shadow: 0 16px 36px rgba(0,0,0,0.34);
         }
         .anima-hub-card.selected {
             border-color: rgba(56,189,248,0.9);
@@ -838,6 +848,7 @@ function installHubStyles() {
             justify-content: center;
             color: #71717a;
             font-size: 12px;
+            perspective: 900px;
         }
         .anima-hub-thumb-bg {
             position: absolute;
@@ -848,6 +859,11 @@ function installHubStyles() {
             filter: blur(18px) saturate(1.08);
             opacity: 0.58;
             transform: scale(1.04);
+            transition: background-image 0.18s ease, opacity 0.22s ease, transform 0.28s ease;
+        }
+        .anima-hub-card:hover .anima-hub-thumb-bg {
+            opacity: 0.72;
+            transform: scale(1.08);
         }
         .anima-hub-thumb-bg::after {
             content: "";
@@ -855,9 +871,23 @@ function installHubStyles() {
             inset: 0;
             background: rgba(8,10,15,0.18);
         }
-        .anima-hub-thumb img {
+        .anima-hub-thumb-image-wrap {
             position: relative;
             z-index: 1;
+            width: 100%;
+            height: 100%;
+            min-height: 375px;
+            transform-style: preserve-3d;
+            transition: transform 0.26s ease, filter 0.26s ease;
+        }
+        .anima-hub-card:hover .anima-hub-thumb-image-wrap {
+            transform: translateZ(18px) scale(1.01);
+            filter: saturate(1.08);
+        }
+        .anima-hub-card.flipping .anima-hub-thumb-image-wrap {
+            animation: anima-card-flip 0.62s cubic-bezier(.2,.72,.22,1);
+        }
+        .anima-hub-thumb-image-wrap img {
             width: 100%;
             height: 100%;
             min-height: 375px;
@@ -865,23 +895,32 @@ function installHubStyles() {
             object-position: center;
             display: block;
             background: transparent;
+            backface-visibility: hidden;
         }
-        .anima-hub-thumb-gallery {
-            position: relative;
-            z-index: 1;
-            width: 100%;
-            height: 100%;
-            min-height: 375px;
-            display: grid;
-            grid-template-columns: repeat(var(--anima-gallery-count, 1), minmax(0, 1fr));
-            gap: 0;
+        .anima-hub-variant-toggle {
+            position: absolute;
+            right: 10px;
+            top: 50px;
+            z-index: 6;
+            min-width: 36px;
+            height: 28px;
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,0.22);
+            background: rgba(0,0,0,0.58);
+            color: #ffffff;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 850;
+            box-shadow: 0 10px 24px rgba(0,0,0,0.34);
+            transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
         }
-        .anima-hub-thumb-gallery img {
-            width: 100%;
-            height: 100%;
-            min-height: 375px;
-            object-fit: contain;
-            object-position: center;
+        .anima-hub-variant-toggle:hover {
+            transform: translateY(-1px) scale(1.06);
+            background: rgba(14,165,233,0.82);
+            border-color: rgba(125,211,252,0.78);
+        }
+        .anima-hub-variant-toggle:active {
+            transform: translateY(0) scale(0.96);
         }
         .anima-hub-overlay-panel {
             position: absolute;
@@ -891,13 +930,15 @@ function installHubStyles() {
             flex-direction: column;
             opacity: 0;
             pointer-events: none;
-            transition: opacity 0.16s ease;
+            transition: opacity 0.22s ease, backdrop-filter 0.22s ease;
             background: linear-gradient(to bottom, rgba(7,7,12,0.76), rgba(7,7,12,0.46) 48%, rgba(7,7,12,0.88));
+            backdrop-filter: blur(0);
         }
         .anima-hub-thumb:hover .anima-hub-overlay-panel,
         .anima-hub-overlay-panel:focus-within {
             opacity: 1;
             pointer-events: auto;
+            backdrop-filter: blur(1.5px);
         }
         .anima-hub-overlay-top {
             flex: 0 0 auto;
@@ -917,6 +958,10 @@ function installHubStyles() {
             font-size: 18px;
             font-weight: 850;
             line-height: 1;
+            transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+        }
+        .anima-hub-overlay-icon:hover {
+            transform: translateY(-1px) scale(1.06);
         }
         .anima-hub-overlay-icon.active {
             background: rgba(14,165,233,0.72);
@@ -1077,12 +1122,19 @@ function installHubStyles() {
             line-height: 1.2;
             white-space: normal;
             overflow-wrap: anywhere;
+            transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
         }
         .anima-hub-overlay-action:hover,
         .anima-hub-overlay-action.primary {
             background: #0ea5e9;
             border-color: #38bdf8;
             color: #ffffff;
+        }
+        .anima-hub-overlay-action:hover {
+            transform: translateY(-1px);
+        }
+        .anima-hub-overlay-action:active {
+            transform: translateY(1px) scale(0.98);
         }
         .anima-hub-overlay-action:disabled {
             opacity: 0.45;
@@ -1121,6 +1173,11 @@ function installHubStyles() {
             padding: 14px 14px 16px;
             background: linear-gradient(to top, rgba(11,16,24,0.96), rgba(11,16,24,0.78) 72%, rgba(11,16,24,0));
             pointer-events: none;
+            transition: padding-bottom 0.2s ease, background 0.2s ease;
+        }
+        .anima-hub-card:hover .anima-hub-card-caption {
+            padding-bottom: 18px;
+            background: linear-gradient(to top, rgba(8,13,20,0.98), rgba(8,13,20,0.74) 72%, rgba(8,13,20,0));
         }
         .anima-hub-card-caption .anima-hub-card-title {
             padding: 0;
@@ -1228,6 +1285,38 @@ function installHubStyles() {
             cursor: pointer;
             font-size: 12px;
             font-weight: 800;
+        }
+        @keyframes anima-card-flip {
+            0% {
+                transform: rotateY(0deg) translateZ(0);
+                filter: brightness(1);
+            }
+            45% {
+                transform: rotateY(88deg) translateZ(20px);
+                filter: brightness(1.28) saturate(1.18);
+            }
+            100% {
+                transform: rotateY(0deg) translateZ(0);
+                filter: brightness(1);
+            }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .anima-hub-card,
+            .anima-hub-thumb-bg,
+            .anima-hub-thumb-image-wrap,
+            .anima-hub-overlay-panel,
+            .anima-hub-overlay-icon,
+            .anima-hub-variant-toggle,
+            .anima-hub-card-caption,
+            .anima-hub-overlay-action {
+                transition: none;
+                animation: none;
+            }
+            .anima-hub-card:hover,
+            .anima-hub-card:hover .anima-hub-thumb-image-wrap,
+            .anima-hub-card:hover .anima-hub-thumb-bg {
+                transform: none;
+            }
         }
         @media (max-width: 920px) {
             .anima-hub {
@@ -1669,34 +1758,44 @@ function renderHub(root) {
             const key = getItemKey(section, item);
             const card = createEl("div", "anima-hub-card");
             card.classList.toggle("selected", selectedMap.has(key));
+            card.classList.toggle("flipping", (HUB_STATE.imageFlipUntil[key] || 0) > Date.now());
 
             const thumb = createEl("div", "anima-hub-thumb", "No image");
             const imageUrls = getItemImageUrls(section, item);
-            const imageUrl = imageUrls[0] || "";
+            const variantIndex = Math.min(HUB_STATE.imageVariants[key] || 0, Math.max(imageUrls.length - 1, 0));
+            const imageUrl = imageUrls[variantIndex] || "";
             if (imageUrls.length) {
                 thumb.textContent = "";
                 const bg = createEl("div", "anima-hub-thumb-bg");
                 bg.style.backgroundImage = `url("${imageUrl.replaceAll('"', "%22")}")`;
                 thumb.appendChild(bg);
 
-                const gallery = createEl("div", "anima-hub-thumb-gallery");
-                gallery.style.setProperty("--anima-gallery-count", String(Math.min(imageUrls.length, 2)));
-                imageUrls.slice(0, 2).forEach((url, index) => {
-                    const img = document.createElement("img");
-                    img.loading = "lazy";
-                    img.src = url;
-                    img.alt = `${getItemTitle(section, item)} ${index + 1}`;
-                    img.onclick = () => openImagePreview(url, getItemTitle(section, item));
-                    img.onerror = () => {
-                        img.remove();
-                        if (!gallery.querySelector("img")) {
-                            bg.remove();
-                            thumb.textContent = "No image";
-                        }
+                const imageWrap = createEl("div", "anima-hub-thumb-image-wrap");
+                const img = document.createElement("img");
+                img.loading = "lazy";
+                img.src = imageUrl;
+                img.alt = `${getItemTitle(section, item)} ${variantIndex + 1}`;
+                img.onclick = () => openImagePreview(imageUrl, getItemTitle(section, item));
+                img.onerror = () => {
+                    img.remove();
+                    bg.remove();
+                    thumb.textContent = "No image";
+                };
+                imageWrap.appendChild(img);
+                thumb.appendChild(imageWrap);
+
+                if (imageUrls.length > 1) {
+                    const variantButton = createEl("button", "anima-hub-variant-toggle", `#${variantIndex + 1}`);
+                    variantButton.type = "button";
+                    variantButton.title = "Switch image";
+                    variantButton.onclick = event => {
+                        event.stopPropagation();
+                        HUB_STATE.imageVariants[key] = (variantIndex + 1) % imageUrls.length;
+                        HUB_STATE.imageFlipUntil[key] = Date.now() + 720;
+                        renderHub(root);
                     };
-                    gallery.appendChild(img);
-                });
-                thumb.appendChild(gallery);
+                    thumb.appendChild(variantButton);
+                }
             }
             thumb.appendChild(createCardOverlay(root, section, item, imageUrl));
 
