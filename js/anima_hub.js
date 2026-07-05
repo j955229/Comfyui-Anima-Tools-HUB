@@ -634,6 +634,38 @@ async function applyCustomComboSelection(root) {
     closeHub();
 }
 
+function getSectionLabel(section) {
+    return SECTIONS.find(item => item.id === section)?.label || section;
+}
+
+async function collectAllSelectedPromptsBySection() {
+    const bySection = {};
+    const sourceSections = comboSourceSections();
+
+    for (const section of sourceSections) {
+        const prompt = stripPromptSuffix(await formatSelectedPrompt(section.id));
+        if (!prompt) continue;
+        bySection[section.id] = bySection[section.id] || [];
+        bySection[section.id].push(prompt);
+    }
+
+    const selectedCombos = Array.from(HUB_STATE.selected.custom_combo.values());
+    selectedCombos.forEach(item => {
+        const sectionPrompts = item?.sectionPrompts && typeof item.sectionPrompts === "object"
+            ? item.sectionPrompts
+            : {};
+        Object.entries(sectionPrompts).forEach(([section, prompt]) => {
+            if (!sourceSections.some(item => item.id === section)) return;
+            const clean = stripPromptSuffix(prompt);
+            if (!clean) return;
+            bySection[section] = bySection[section] || [];
+            bySection[section].push(clean);
+        });
+    });
+
+    return bySection;
+}
+
 function getFavoritesMap(section) {
     const config = normalizeFavoritesConfig(HUB_STATE.favoritesConfig);
     return new Map((config[section]?.items || []).map(item => [getItemKey(section, item), item]));
@@ -2788,27 +2820,46 @@ function closeHub() {
 }
 
 async function applyCurrentSelection(root) {
-    const activeSection = HUB_STATE.activeSection;
-    if (activeSection === "custom_combo") {
-        await applyCustomComboSelection(root);
-        return;
-    }
-
-    if (HUB_STATE.selected[activeSection].size === 0) {
+    const bySection = await collectAllSelectedPromptsBySection();
+    const entries = Object.entries(bySection).filter(([, prompts]) => Array.isArray(prompts) && prompts.some(prompt => stripPromptSuffix(prompt)));
+    if (!entries.length) {
         closeHub();
         return;
     }
 
-    const prompt = await formatSelectedPrompt(activeSection);
-    const targetInfo = getTargetById(activeSection, HUB_STATE.targetIds[activeSection], HUB_STATE.preferredNode);
-    if (!targetInfo) {
-        alert(`No ${ANIMA_SECTION_WIDGETS[activeSection]} target found.`);
+    const missing = [];
+    const failed = [];
+    let applied = 0;
+    for (const [section, prompts] of entries) {
+        const prompt = withPromptSuffix(prompts.map(stripPromptSuffix).filter(Boolean).join(", "));
+        if (!prompt) continue;
+        const targetInfo = getTargetById(section, HUB_STATE.targetIds[section], HUB_STATE.preferredNode);
+        if (!targetInfo) {
+            missing.push(section);
+            continue;
+        }
+        if (applyTagsToTarget(targetInfo, prompt)) {
+            applied += 1;
+        } else {
+            failed.push(section);
+        }
+    }
+
+    if (missing.length || failed.length) {
+        const messages = [];
+        if (missing.length) {
+            messages.push(`没有可套用目标：${missing.map(getSectionLabel).join("、")}`);
+        }
+        if (failed.length) {
+            messages.push(`套用失败：${failed.map(getSectionLabel).join("、")}`);
+        }
+        if (applied) {
+            messages.push(`已套用 ${applied} 个分类，其余请检查目标节点。`);
+        }
+        alert(messages.join("\n"));
         return;
     }
-    if (!applyTagsToTarget(targetInfo, prompt)) {
-        alert("Failed to apply tags.");
-        return;
-    }
+
     closeHub();
 }
 
