@@ -1493,6 +1493,7 @@ SELECTOR_RANDOM_PROPERTY = "anima_selector_random"
 SELECTOR_RANDOM_SCOPE_PROPERTY = "anima_selector_random_scope"
 RANDOM_SCOPE_FAVORITES = "__favorites"
 RANDOM_SCOPE_CUSTOM_COMBO = "__custom_combo"
+RANDOM_SCOPE_CUSTOM_COMBO_CATEGORY_PREFIX = "__custom_combo_category:"
 
 SELECTOR_RANDOM_INPUTS = {
     "AnimaArtistTagSelector": {"artist": "artist_tags"},
@@ -1804,7 +1805,13 @@ def _load_random_custom_cards(section, scope_ids):
     ]
 
 def _load_random_combo_cards(section, scope_ids):
-    if RANDOM_SCOPE_CUSTOM_COMBO not in scope_ids:
+    combo_category_ids = [
+        item[len(RANDOM_SCOPE_CUSTOM_COMBO_CATEGORY_PREFIX):]
+        for item in scope_ids
+        if isinstance(item, str) and item.startswith(RANDOM_SCOPE_CUSTOM_COMBO_CATEGORY_PREFIX)
+    ]
+    include_all_combos = RANDOM_SCOPE_CUSTOM_COMBO in scope_ids
+    if not include_all_combos and not combo_category_ids:
         return []
     try:
         data = load_custom_hub_data()
@@ -1821,6 +1828,9 @@ def _load_random_combo_cards(section, scope_ids):
             continue
         prompt = str(section_prompts.get(section) or "").strip()
         if not prompt:
+            continue
+        taxonomy_ids = [str(item) for item in card.get("taxonomyIds", [])] if isinstance(card.get("taxonomyIds"), list) else []
+        if combo_category_ids and not include_all_combos and not any(category_id in taxonomy_ids for category_id in combo_category_ids):
             continue
         combo_rows.append({
             "id": card.get("id"),

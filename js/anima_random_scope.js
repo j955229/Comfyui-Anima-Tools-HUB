@@ -86,11 +86,39 @@ async function getScopeGroups(section) {
     const comboCards = customData?.cards?.custom_combo;
     const hasComboForSection = Array.isArray(comboCards)
         && comboCards.some(card => card?.sectionPrompts && typeof card.sectionPrompts === "object" && card.sectionPrompts[section]);
-    if (hasComboForSection) {
-        specialChildren.push({ id: "__custom_combo", label: "自定组合", groupLabel: "特殊范围", isSpecial: true });
-    }
     const favoriteCount = Array.isArray(favoritesData?.[section]?.items) ? favoritesData[section].items.length : 0;
     specialChildren[0].label = favoriteCount ? `我的最愛 (${favoriteCount})` : "我的最愛";
+
+    let comboScopeGroup = null;
+    if (hasComboForSection) {
+        const comboCategories = Array.isArray(customData?.categories?.custom_combo)
+            ? customData.categories.custom_combo
+            : [];
+        const comboChildren = [{ id: "__custom_combo", label: "全部", groupLabel: "自定组合", isSpecial: true }];
+        comboCategories.forEach(category => {
+            const categoryId = String(category?.id || "").trim();
+            if (!categoryId) return;
+            const count = comboCards.filter(card => {
+                const sectionPrompts = card?.sectionPrompts;
+                const taxonomyIds = Array.isArray(card?.taxonomyIds) ? card.taxonomyIds.map(id => String(id)) : [];
+                return sectionPrompts && typeof sectionPrompts === "object"
+                    && sectionPrompts[section]
+                    && taxonomyIds.includes(categoryId);
+            }).length;
+            if (!count) return;
+            comboChildren.push({
+                id: `__custom_combo_category:${categoryId}`,
+                label: `${category.label || category.name || "Custom"} (${count})`,
+                groupLabel: "自定组合",
+                isSpecial: true,
+            });
+        });
+        comboScopeGroup = {
+            id: "custom_combo",
+            label: "自定组合",
+            children: comboChildren,
+        };
+    }
 
     const staticGroups = getTaxonomyGroups(section).map(group => ({
         id: group.id,
@@ -125,6 +153,7 @@ async function getScopeGroups(section) {
             label: "特殊范围",
             children: specialChildren,
         },
+        ...(comboScopeGroup ? [comboScopeGroup] : []),
         ...staticGroups,
     ];
 }
