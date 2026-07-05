@@ -709,6 +709,39 @@ function openCustomCategoryDialog(root) {
     });
 }
 
+async function deleteCustomCategory(root, section, categoryId) {
+    const data = normalizeCustomHubData(HUB_STATE.customHubData);
+    const category = data.categories[section].find(item => item.id === categoryId);
+    if (!category) return;
+    if (!window.confirm(`删除自定义小分类「${category.label || category.name || "Custom"}」？\n卡片不会被删除，只会移除这个分类归属。`)) return;
+
+    data.categories[section] = data.categories[section].filter(item => item.id !== categoryId);
+    const remainingCategories = [
+        ...getTaxonomyGroups(section).flatMap(group => group.children || []),
+        ...data.categories[section],
+    ];
+    data.cards[section] = data.cards[section].map(card => {
+        const taxonomyIds = Array.isArray(card.taxonomyIds) ? card.taxonomyIds.filter(id => id !== categoryId) : [];
+        const taxonomyLabels = remainingCategories
+            .filter(item => taxonomyIds.includes(item.id))
+            .map(item => item.label || item.name || "Custom");
+        return {
+            ...card,
+            taxonomyIds,
+            taxonomyLabels,
+            categories: taxonomyLabels,
+        };
+    });
+
+    HUB_STATE.customHubData = data;
+    if (HUB_STATE.taxonomy[section] === categoryId) {
+        HUB_STATE.taxonomy[section] = "all";
+    }
+    await saveCustomHubData();
+    renderHub(root);
+    showToast("小分类已删除");
+}
+
 function addDialogField(form, labelText, field) {
     const row = createEl("label", "anima-hub-custom-field");
     row.appendChild(createEl("span", "", labelText));
@@ -808,6 +841,18 @@ function openCustomCardDialog(root) {
     });
     document.body.appendChild(dialog);
     title.focus();
+}
+
+async function deleteCustomCard(root, section, item) {
+    if (!item?.isCustom) return;
+    if (!window.confirm(`删除自定义卡片「${getItemTitle(section, item)}」？`)) return;
+    const data = normalizeCustomHubData(HUB_STATE.customHubData);
+    data.cards[section] = data.cards[section].filter(card => card.id !== item.id);
+    HUB_STATE.customHubData = data;
+    HUB_STATE.selected[section]?.delete(getItemKey(section, item));
+    await saveCustomHubData();
+    renderHub(root);
+    showToast("卡片已删除");
 }
 
 function updateCustomCardCategories(section, cardId, taxonomyIds) {
@@ -1125,6 +1170,28 @@ function installHubStyles() {
         .anima-hub-taxonomy-count {
             color: #a1a1aa;
             font-weight: 750;
+        }
+        .anima-hub-taxonomy-custom-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 6px;
+            align-items: stretch;
+        }
+        .anima-hub-taxonomy-delete {
+            min-height: 32px;
+            border: 1px solid rgba(248,113,113,0.32);
+            background: rgba(127,29,29,0.24);
+            color: #fecaca;
+            border-radius: 7px;
+            padding: 0 8px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 800;
+        }
+        .anima-hub-taxonomy-delete:hover {
+            background: rgba(220,38,38,0.34);
+            border-color: rgba(248,113,113,0.58);
+            color: #ffffff;
         }
         .anima-hub-footer {
             border-top: 1px solid rgba(255,255,255,0.09);
@@ -1539,6 +1606,10 @@ function installHubStyles() {
         .anima-hub-overlay-row.single {
             grid-template-columns: 1fr;
         }
+        .anima-hub-overlay-row.centered {
+            width: min(160px, 70%);
+            align-self: center;
+        }
         .anima-hub-overlay-action {
             min-height: 36px;
             height: auto;
@@ -1948,6 +2019,7 @@ function renderTaxonomyBar(root, section, rows) {
             children: customCategories.map(category => ({
                 ...category,
                 label: category.label || category.name || "Custom",
+                isCustom: true,
             })),
         });
     }
@@ -1968,7 +2040,21 @@ function renderTaxonomyBar(root, section, rows) {
                 renderHub(root);
             };
             button.appendChild(createEl("span", "anima-hub-taxonomy-count", count.toLocaleString()));
-            options.appendChild(button);
+            if (category.isCustom) {
+                const row = createEl("div", "anima-hub-taxonomy-custom-row");
+                const remove = createEl("button", "anima-hub-taxonomy-delete", "删除");
+                remove.type = "button";
+                remove.title = `删除 ${category.label}`;
+                remove.onclick = event => {
+                    event.stopPropagation();
+                    deleteCustomCategory(root, section, category.id);
+                };
+                row.appendChild(button);
+                row.appendChild(remove);
+                options.appendChild(row);
+            } else {
+                options.appendChild(button);
+            }
         });
 
         groupEl.appendChild(options);
@@ -2198,15 +2284,20 @@ function createCardOverlay(root, section, item, imageUrl, imageUrls = [], varian
         sourceRow.appendChild(sourceButton);
         actions.appendChild(sourceRow);
     } else {
-        const actionRow = createEl("div", "anima-hub-overlay-row");
+        const actionRow = createEl("div", item?.isCustom ? "anima-hub-overlay-row" : "anima-hub-overlay-row single centered");
         actionRow.appendChild(createOverlayButton("Copy", async () => {
             const prompt = await getPromptForItem(section, item);
             await copyText(prompt ? `${prompt}, ` : "");
         }));
         if (item?.isCustom) {
-            actionRow.appendChild(createOverlayButton("分类", () => openCustomCardCategoryDialog(root, section, item)));
+            actionRow.appendChild(createOverlayButton("删除", () => deleteCustomCard(root, section, item)));
+            const categoryRow = createEl("div", "anima-hub-overlay-row single centered");
+            categoryRow.appendChild(createOverlayButton("分类", () => openCustomCardCategoryDialog(root, section, item)));
+            actions.appendChild(actionRow);
+            actions.appendChild(categoryRow);
+        } else {
+            actions.appendChild(actionRow);
         }
-        actions.appendChild(actionRow);
         if (showSourceButton) {
             const sourceRow = createEl("div", "anima-hub-overlay-row single");
             const sourceButton = createSourceButton();
@@ -2217,8 +2308,9 @@ function createCardOverlay(root, section, item, imageUrl, imageUrls = [], varian
     }
 
     if (section === "character" && item?.isCustom) {
-        const customRow = createEl("div", "anima-hub-overlay-row single");
+        const customRow = createEl("div", "anima-hub-overlay-row");
         customRow.appendChild(createOverlayButton("分类", () => openCustomCardCategoryDialog(root, section, item)));
+        customRow.appendChild(createOverlayButton("删除", () => deleteCustomCard(root, section, item)));
         actions.appendChild(customRow);
     }
 
