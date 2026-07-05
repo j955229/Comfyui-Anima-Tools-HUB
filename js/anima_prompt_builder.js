@@ -174,16 +174,18 @@ function addPromptBuilderActionPanel(node, config) {
     }
 
     if (typeof node.addDOMWidget !== "function") {
-        const openWidget = node.addWidget("button", "打开 Anima Prompt Hub", null, () => openAnimaHub(config.openSection, node));
+        let firstWidget = null;
         config.toggles.forEach(([section, label]) => {
             const toggle = node.addWidget("button", `${label}: ${isRandomEnabled(node, section) ? "随机开" : "随机关"}`, null, () => {
                 setRandomEnabled(node, section, !isRandomEnabled(node, section));
                 toggle.name = `${label}: ${isRandomEnabled(node, section) ? "随机开" : "随机关"}`;
             });
+            firstWidget = firstWidget || toggle;
             toggle.__animaPromptBuilderActionSection = section;
         });
-        node._animaPromptBuilderPanelWidget = openWidget;
-        return openWidget;
+        node.addWidget("button", "打开 Anima Prompt Hub", null, () => openAnimaHub(config.openSection, node));
+        node._animaPromptBuilderPanelWidget = firstWidget;
+        return firstWidget;
     }
 
     const panel = document.createElement("div");
@@ -194,11 +196,6 @@ function addPromptBuilderActionPanel(node, config) {
         padding: 4px 0 2px;
         pointer-events: none;
     `;
-
-    const top = document.createElement("div");
-    top.style.cssText = "display:flex;gap:6px;margin-bottom:6px;";
-    top.appendChild(createButton("打开 Anima Prompt Hub", () => openAnimaHub(config.openSection, node), true));
-    panel.appendChild(top);
 
     const grid = document.createElement("div");
     grid.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;";
@@ -212,8 +209,15 @@ function addPromptBuilderActionPanel(node, config) {
         toggleButtons.push([toggle, section, label]);
         grid.appendChild(toggle);
     });
+    if (config.toggles.length % 2 === 0) {
+        const spacer = document.createElement("div");
+        spacer.setAttribute("aria-hidden", "true");
+        grid.appendChild(spacer);
+    }
+    grid.appendChild(createButton("打开 Anima Prompt Hub", () => openAnimaHub(config.openSection, node), true));
     panel.appendChild(grid);
 
+    const rowCount = Math.ceil((config.toggles.length + (config.toggles.length % 2 === 0 ? 2 : 1)) / 2);
     const widget = node.addDOMWidget("anima_prompt_builder_actions", "div", panel, {
         serialize: false,
         hideOnZoom: false,
@@ -221,8 +225,8 @@ function addPromptBuilderActionPanel(node, config) {
         setValue: () => {},
     });
     widget.serialize = false;
-    widget.computeSize = (width) => [width, config.toggles.length <= 1 ? 72 : 108];
-    widget.computedHeight = config.toggles.length <= 1 ? 72 : 108;
+    widget.computeSize = (width) => [width, 10 + rowCount * 34];
+    widget.computedHeight = 10 + rowCount * 34;
     widget.__animaPromptBuilderRefresh = () => {
         toggleButtons.forEach(([button, section, label]) => styleToggleButton(button, node, section, label));
     };

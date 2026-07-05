@@ -10,6 +10,7 @@ export const ANIMA_SECTION_WIDGETS = {
     composition: "composition_tags",
     expression: "expression_tags",
     lighting: "lighting_tags",
+    custom_combo: "custom_combo",
 };
 
 const PROMPT_BUILDER_SECTION_WIDGETS = {

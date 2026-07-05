@@ -782,7 +782,11 @@ class AnimaFinalAssembler:
         if content_string:
             prompt_lines.append(content_string)
 
-        return ("\n\n".join(prompt_lines), content_string)
+        prompt_string = "\n\n".join(prompt_lines).rstrip()
+        if prompt_string:
+            prompt_string = f"{prompt_string}\n\n"
+
+        return (prompt_string, content_string)
 
 class AnimaPromptPlus:
     @classmethod
@@ -1752,7 +1756,7 @@ def get_favorites_path():
     os.makedirs(user_dir, exist_ok=True)
     return os.path.join(user_dir, "anima_tools_favorites.json")
 
-FAVORITE_SECTIONS = ["artist", "character", "lora", "clothing", "background", "pose", "composition", "expression", "lighting"]
+FAVORITE_SECTIONS = ["artist", "character", "lora", "clothing", "background", "pose", "composition", "expression", "lighting", "custom_combo"]
 
 def get_default_favorites_data():
     return {
@@ -1877,7 +1881,7 @@ async def get_anima_wildcard_image_api(request):
         return web.Response(status=404)
     return web.FileResponse(path)
 
-CUSTOM_HUB_SECTIONS = ["artist", "character", "clothing", "background", "pose", "composition", "expression", "lighting"]
+CUSTOM_HUB_SECTIONS = ["artist", "character", "clothing", "background", "pose", "composition", "expression", "lighting", "custom_combo"]
 
 def get_anima_user_dir(*parts):
     try:

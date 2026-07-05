@@ -21,6 +21,7 @@ const SECTIONS = [
     { id: "composition", label: "构图", widget: "composition_tags", accent: "#22d3ee" },
     { id: "expression", label: "表情", widget: "expression_tags", accent: "#fb7185" },
     { id: "lighting", label: "光线", widget: "lighting_tags", accent: "#facc15" },
+    { id: "custom_combo", label: "自定组合", widget: "custom_combo", accent: "#60a5fa" },
 ];
 
 const PAGE_SIZE = 240;
@@ -52,6 +53,7 @@ const HUB_STATE = {
         composition: "",
         expression: "",
         lighting: "",
+        custom_combo: "",
     },
     visibleLimits: {
         artist: PAGE_SIZE,
@@ -62,6 +64,7 @@ const HUB_STATE = {
         composition: PAGE_SIZE,
         expression: PAGE_SIZE,
         lighting: PAGE_SIZE,
+        custom_combo: PAGE_SIZE,
     },
     resetScrollFor: {},
     imageVariants: {},
@@ -76,6 +79,7 @@ const HUB_STATE = {
         composition: new Map(),
         expression: new Map(),
         lighting: new Map(),
+        custom_combo: new Map(),
     },
     taxonomy: {
         character: "all",
@@ -302,6 +306,7 @@ function getBaseSectionData(section) {
     if (section === "composition") return window.compositionData || [];
     if (section === "expression") return window.expressionData || [];
     if (section === "lighting") return window.lightingData || [];
+    if (section === "custom_combo") return [];
     return [];
 }
 
@@ -364,6 +369,9 @@ function getEditedTags(section, item, fallback) {
 }
 
 function getItemTitle(section, item) {
+    if (section === "custom_combo" && item?.isCustom) {
+        return item?.name || splitPromptTokens(item?.tags).slice(0, 8).join(", ") || "自定组合";
+    }
     if (item?.isCustom) return item?.name || item?.title || "";
     if (section === "artist") return item?.prompt || `@${item?.name || ""}`;
     if (section === "character") return titleCase(item?.name || "");
@@ -371,6 +379,10 @@ function getItemTitle(section, item) {
 }
 
 function getItemMeta(section, item) {
+    if (section === "custom_combo" && item?.isCustom) {
+        const labels = Array.isArray(item?.sectionLabels) ? item.sectionLabels : [];
+        return labels.length ? labels.join(" / ") : splitPromptTokens(item?.tags).slice(0, 8).join(", ");
+    }
     if (item?.isCustom) return Array.isArray(item?.categories) ? item.categories.join(" / ") : (item?.category || "");
     if (section === "artist") return [item?.sourceLabel, `${item?.post_count ?? item?.postCount ?? 0} works`].filter(Boolean).join(" / ");
     if (section === "character") return item?.copyright || "";
@@ -389,6 +401,7 @@ function getSearchText(section, item) {
         item?.prompt,
         item?.source,
         item?.sourceLabel,
+        ...Object.values(item?.sectionPrompts || {}),
         ...(Array.isArray(item?.taxonomyLabels) ? item.taxonomyLabels : []),
         ...(Array.isArray(item?.aliases) ? item.aliases : []),
     ].join(" ").toLowerCase();
@@ -432,6 +445,13 @@ function getDanbooruUrl(section, item) {
 
 async function getPromptForItem(section, item, characterMode = item?._hubCharacterMode || "trigger") {
     if (section === "artist") return getEditedTrigger(section, item, item?.prompt || item?.trigger || `@${item?.name || ""}`);
+    if (section === "custom_combo") {
+        const result = [];
+        const seen = new Set();
+        pushUniquePromptTokens(result, seen, getEditedTrigger(section, item, item?.trigger || ""));
+        pushUniquePromptTokens(result, seen, getEditedTags(section, item, item?.tags || Object.values(item?.sectionPrompts || {}).join(", ")));
+        return result.join(", ");
+    }
     if (section === "character") {
         if (item?.isCustom) {
             const trigger = getEditedTrigger(section, item, item?.trigger || item?.name || "");
@@ -480,6 +500,122 @@ async function formatSelectedPrompt(section) {
     const prompts = await Promise.all(selected.map(item => getPromptForItem(section, item)));
     const prompt = prompts.flatMap(splitPromptTokens).filter(Boolean).join(", ");
     return prompt ? `${prompt}, ` : "";
+}
+
+function stripPromptSuffix(value) {
+    return String(value || "").replace(/,\s*$/, "").trim();
+}
+
+function withPromptSuffix(value) {
+    const prompt = stripPromptSuffix(value);
+    return prompt ? `${prompt}, ` : "";
+}
+
+function comboSourceSections() {
+    return SECTIONS.filter(section => section.id !== "custom_combo");
+}
+
+function getComboSelectedCount() {
+    return comboSourceSections().reduce((total, section) => total + (HUB_STATE.selected[section.id]?.size || 0), 0);
+}
+
+async function collectSelectedComboPrompts() {
+    const sectionPrompts = {};
+    const sectionLabels = [];
+    const allTokens = [];
+    const seen = new Set();
+
+    for (const section of comboSourceSections()) {
+        const prompt = stripPromptSuffix(await formatSelectedPrompt(section.id));
+        if (!prompt) continue;
+        sectionPrompts[section.id] = prompt;
+        sectionLabels.push(section.label);
+        splitPromptTokens(prompt).forEach(token => {
+            const key = normalizePromptToken(token);
+            if (key && !seen.has(key)) {
+                seen.add(key);
+                allTokens.push(token);
+            }
+        });
+    }
+
+    return {
+        sectionPrompts,
+        sectionLabels,
+        tags: allTokens.join(", "),
+    };
+}
+
+async function createCustomComboFromSelection(root) {
+    const combo = await collectSelectedComboPrompts();
+    if (!combo.tags) {
+        showToast("没有可新增的组合");
+        return;
+    }
+
+    const id = `combo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const data = normalizeCustomHubData(HUB_STATE.customHubData);
+    data.cards.custom_combo.push({
+        id,
+        hubKey: `custom_combo:${id}`,
+        isCustom: true,
+        isCombo: true,
+        source: "custom_combo",
+        name: "",
+        trigger: "",
+        tags: combo.tags,
+        sectionPrompts: combo.sectionPrompts,
+        sectionLabels: combo.sectionLabels,
+        traits: splitPromptTokens(combo.tags).slice(0, 8),
+        createdAt: new Date().toISOString(),
+    });
+    HUB_STATE.customHubData = data;
+    await saveCustomHubData();
+    HUB_STATE.activeSection = "custom_combo";
+    HUB_STATE.viewMode = "all";
+    resetVisibleLimit("custom_combo");
+    renderHub(root);
+    showToast("自定组合已新增");
+}
+
+async function applyCustomComboSelection(root) {
+    const selected = Array.from(HUB_STATE.selected.custom_combo.values());
+    if (!selected.length) {
+        closeHub();
+        return;
+    }
+
+    const bySection = {};
+    selected.forEach(item => {
+        const sectionPrompts = item?.sectionPrompts && typeof item.sectionPrompts === "object"
+            ? item.sectionPrompts
+            : {};
+        Object.entries(sectionPrompts).forEach(([section, prompt]) => {
+            const clean = stripPromptSuffix(prompt);
+            if (!clean) return;
+            bySection[section] = bySection[section] || [];
+            bySection[section].push(clean);
+        });
+    });
+
+    let applied = 0;
+    for (const [section, prompts] of Object.entries(bySection)) {
+        const targetInfo = getTargetById(section, HUB_STATE.targetIds[section], HUB_STATE.preferredNode);
+        if (!targetInfo) continue;
+        if (applyTagsToTarget(targetInfo, withPromptSuffix(prompts.join(", ")))) {
+            applied += 1;
+        }
+    }
+
+    if (!applied) {
+        const prompt = stripPromptSuffix(await formatSelectedPrompt("custom_combo"));
+        if (prompt) {
+            await copyText(withPromptSuffix(prompt));
+            showToast("没有可套用目标，已复制组合");
+        }
+        return;
+    }
+    closeHub();
 }
 
 function getFavoritesMap(section) {
@@ -831,6 +967,78 @@ function openCustomCardDialog(root) {
             alert(error?.message || "新增卡片失败");
             submit.disabled = false;
             submit.textContent = "新增";
+        }
+    };
+
+    panel.appendChild(form);
+    dialog.appendChild(panel);
+    dialog.addEventListener("mousedown", event => {
+        if (event.target === dialog) closeCustomDialog(dialog);
+    });
+    document.body.appendChild(dialog);
+    title.focus();
+}
+
+function openCustomCardEditDialog(root, section, item) {
+    if (!item?.isCustom) return;
+    const dialog = createEl("div", "anima-hub-custom-dialog");
+    const panel = createEl("div", "anima-hub-custom-panel");
+    const form = createEl("form", "anima-hub-custom-form");
+    panel.appendChild(createEl("div", "anima-hub-custom-title", "编辑卡片"));
+
+    const title = addDialogField(form, "标题", createEl("input", "anima-hub-custom-input"));
+    title.value = item.name || "";
+    title.placeholder = section === "custom_combo" ? "例如：暖光城市角色组合" : "例如：Rainy Street";
+
+    const trigger = addDialogField(form, "Trigger", createEl("textarea", "anima-hub-custom-input"));
+    trigger.rows = 2;
+    trigger.value = item.trigger || "";
+
+    const tags = addDialogField(form, "Tags", createEl("textarea", "anima-hub-custom-input"));
+    tags.rows = 4;
+    tags.value = item.tags || "";
+
+    const image = addDialogField(form, "图片", createEl("input", "anima-hub-custom-input"));
+    image.type = "file";
+    image.accept = "image/png,image/jpeg,image/webp";
+
+    const actions = createEl("div", "anima-hub-custom-actions");
+    const cancel = createEl("button", "anima-hub-button", "取消");
+    cancel.type = "button";
+    cancel.onclick = () => closeCustomDialog(dialog);
+    const submit = createEl("button", "anima-hub-button primary", "保存");
+    submit.type = "submit";
+    actions.appendChild(cancel);
+    actions.appendChild(submit);
+    form.appendChild(actions);
+
+    form.onsubmit = async event => {
+        event.preventDefault();
+        submit.disabled = true;
+        submit.textContent = "储存中";
+        try {
+            const data = normalizeCustomHubData(HUB_STATE.customHubData);
+            const card = data.cards[section].find(row => row.id === item.id);
+            if (!card) throw new Error("找不到这张自定义卡片");
+            const preview = image.files?.[0] ? await uploadCustomCardImage(section, image.files[0]) : "";
+            card.name = title.value.trim();
+            card.trigger = trigger.value.trim();
+            card.tags = tags.value.trim();
+            card.traits = splitPromptTokens(card.tags).slice(0, 8);
+            if (preview) {
+                card.preview = preview;
+                card.imageUrl = preview;
+            }
+            HUB_STATE.customHubData = data;
+            await saveCustomHubData();
+            closeCustomDialog(dialog);
+            renderHub(root);
+            showToast("卡片已更新");
+        } catch (error) {
+            console.warn("[Anima Tools] Failed to edit custom card", error);
+            alert(error?.message || "编辑卡片失败");
+            submit.disabled = false;
+            submit.textContent = "保存";
         }
     };
 
@@ -1223,6 +1431,11 @@ function installHubStyles() {
             background: #0ea5e9;
             border-color: #38bdf8;
             color: #ffffff;
+        }
+        .anima-hub-button:disabled,
+        .anima-hub-pill:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
         }
         .anima-hub-tabs {
             display: flex;
@@ -2290,9 +2503,10 @@ function createCardOverlay(root, section, item, imageUrl, imageUrls = [], varian
             await copyText(prompt ? `${prompt}, ` : "");
         }));
         if (item?.isCustom) {
-            actionRow.appendChild(createOverlayButton("删除", () => deleteCustomCard(root, section, item)));
-            const categoryRow = createEl("div", "anima-hub-overlay-row single centered");
+            actionRow.appendChild(createOverlayButton("编辑", () => openCustomCardEditDialog(root, section, item)));
+            const categoryRow = createEl("div", "anima-hub-overlay-row");
             categoryRow.appendChild(createOverlayButton("分类", () => openCustomCardCategoryDialog(root, section, item)));
+            categoryRow.appendChild(createOverlayButton("删除", () => deleteCustomCard(root, section, item)));
             actions.appendChild(actionRow);
             actions.appendChild(categoryRow);
         } else {
@@ -2309,9 +2523,12 @@ function createCardOverlay(root, section, item, imageUrl, imageUrls = [], varian
 
     if (section === "character" && item?.isCustom) {
         const customRow = createEl("div", "anima-hub-overlay-row");
+        customRow.appendChild(createOverlayButton("编辑", () => openCustomCardEditDialog(root, section, item)));
         customRow.appendChild(createOverlayButton("分类", () => openCustomCardCategoryDialog(root, section, item)));
-        customRow.appendChild(createOverlayButton("删除", () => deleteCustomCard(root, section, item)));
         actions.appendChild(customRow);
+        const deleteRow = createEl("div", "anima-hub-overlay-row single centered");
+        deleteRow.appendChild(createOverlayButton("删除", () => deleteCustomCard(root, section, item)));
+        actions.appendChild(deleteRow);
     }
 
     overlay.appendChild(scroll);
@@ -2345,6 +2562,7 @@ function renderHub(root) {
     ensureCharacterData(root);
 
     if (targetSelect) {
+        targetSelect.style.display = section === "custom_combo" ? "none" : "";
         const currentId = HUB_STATE.targetIds[section];
         targetSelect.innerHTML = "";
         if (!targets.length) {
@@ -2408,6 +2626,8 @@ function renderHub(root) {
             message = "No selected cards yet.";
         } else if (section === "composition" || section === "expression" || section === "lighting") {
             message = `${sectionDef.label} is empty for now.`;
+        } else if (section === "custom_combo") {
+            message = "还没有自定组合。先选择几张卡片，再按右下角新增自定组合。";
         }
         if (HUB_STATE.viewMode === "all" && section === "artist" && HUB_STATE.artistDataLoading) {
             message = sourceStatusText || "Artist data is loading.";
@@ -2476,6 +2696,12 @@ function renderHub(root) {
         const sourceLabel = HUB_STATE.viewMode === "favorites" ? "favorites" : "total";
         count.textContent = `${selectedMap.size} selected / ${allData.length} ${sourceLabel} / showing ${filtered.length}`;
     }
+    const addCombo = root.querySelector(".anima-hub-add-combo");
+    if (addCombo) {
+        const comboCount = getComboSelectedCount();
+        addCombo.disabled = comboCount === 0;
+        addCombo.textContent = comboCount ? `新增自定组合 (${comboCount})` : "新增自定组合";
+    }
     requestAnimationFrame(() => {
         grid.scrollTop = previousScrollTop;
     });
@@ -2523,6 +2749,11 @@ function closeHub() {
 
 async function applyCurrentSelection(root) {
     const activeSection = HUB_STATE.activeSection;
+    if (activeSection === "custom_combo") {
+        await applyCustomComboSelection(root);
+        return;
+    }
+
     if (HUB_STATE.selected[activeSection].size === 0) {
         closeHub();
         return;
@@ -2674,11 +2905,15 @@ function createHub(section, preferredNode) {
         const prompt = await formatSelectedPrompt(HUB_STATE.activeSection);
         await copyText(prompt);
     };
+    const addCombo = createEl("button", "anima-hub-button anima-hub-add-combo", "新增自定组合");
+    addCombo.type = "button";
+    addCombo.onclick = async () => createCustomComboFromSelection(root);
     const apply = createEl("button", "anima-hub-button primary", "Apply to Target");
     apply.type = "button";
     apply.onclick = async () => applyCurrentSelection(root);
     buttonRow.appendChild(clear);
     buttonRow.appendChild(copySelected);
+    buttonRow.appendChild(addCombo);
     buttonRow.appendChild(apply);
     footer.appendChild(count);
     footer.appendChild(buttonRow);
