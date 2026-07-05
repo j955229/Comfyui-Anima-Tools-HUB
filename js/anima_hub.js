@@ -370,7 +370,7 @@ function getEditedTags(section, item, fallback) {
 
 function getItemTitle(section, item) {
     if (section === "custom_combo" && item?.isCustom) {
-        return item?.name || splitPromptTokens(item?.tags).slice(0, 8).join(", ") || "自定组合";
+        return item?.name || "";
     }
     if (item?.isCustom) return item?.name || item?.title || "";
     if (section === "artist") return item?.prompt || `@${item?.name || ""}`;
@@ -378,15 +378,31 @@ function getItemTitle(section, item) {
     return item?.name || item?.name_zh || item?.tags || "";
 }
 
+function getItemCategoryLabels(section, item) {
+    const assignable = getAllAssignableCategories(section);
+    const taxonomyIds = Array.isArray(item?.taxonomyIds) ? item.taxonomyIds : [];
+    if (taxonomyIds.length) {
+        return assignable
+            .filter(category => taxonomyIds.includes(category.id))
+            .map(category => category.label || category.name || "")
+            .filter(Boolean);
+    }
+    const matched = assignable
+        .filter(category => !category.isCustom && itemMatchesHubTaxonomy(section, item, category.id))
+        .map(category => category.label || category.name || "")
+        .filter(Boolean);
+    if (matched.length) return matched;
+    if (item?.isCustom) return [];
+    return Array.isArray(item?.categories) ? item.categories.filter(Boolean) : [];
+}
+
 function getItemMeta(section, item) {
     if (section === "custom_combo" && item?.isCustom) {
-        const labels = Array.isArray(item?.sectionLabels) ? item.sectionLabels : [];
-        return labels.length ? labels.join(" / ") : splitPromptTokens(item?.tags).slice(0, 8).join(", ");
+        return getItemCategoryLabels(section, item).join(" / ");
     }
-    if (item?.isCustom) return Array.isArray(item?.categories) ? item.categories.join(" / ") : (item?.category || "");
     if (section === "artist") return [item?.sourceLabel, `${item?.post_count ?? item?.postCount ?? 0} works`].filter(Boolean).join(" / ");
     if (section === "character") return item?.copyright || "";
-    return [item?.categories?.[0], item?.traits?.slice?.(0, 3)?.join(", ")].filter(Boolean).join(" / ");
+    return getItemCategoryLabels(section, item).join(" / ");
 }
 
 function getSearchText(section, item) {
@@ -2363,10 +2379,15 @@ function fillOverlayTags(tagContainer, tags, onTagClick = null, editButton = nul
 }
 
 function createCardCaption(root, section, item) {
-    const caption = createEl("div", "anima-hub-card-caption");
-    caption.appendChild(createEl("div", "anima-hub-card-title", getItemTitle(section, item)));
+    const titleText = getItemTitle(section, item);
+    const metaText = getItemMeta(section, item) || "";
+    if (!titleText && !metaText) return null;
 
-    const metaText = getItemMeta(section, item) || item?.tags || "";
+    const caption = createEl("div", "anima-hub-card-caption");
+    if (titleText) {
+        caption.appendChild(createEl("div", "anima-hub-card-title", titleText));
+    }
+
     const meta = createEl("div", "anima-hub-card-meta");
     if (section === "character" && item?.copyright) {
         const series = createEl("button", "anima-hub-meta-link", item.copyright);
@@ -2380,7 +2401,9 @@ function createCardCaption(root, section, item) {
     } else {
         meta.textContent = metaText;
     }
-    caption.appendChild(meta);
+    if (metaText || meta.childNodes.length) {
+        caption.appendChild(meta);
+    }
     return caption;
 }
 
@@ -2681,7 +2704,8 @@ function renderHub(root) {
             }
             thumb.appendChild(createCardOverlay(root, section, item, imageUrl, imageUrls, variantIndex));
 
-            thumb.appendChild(createCardCaption(root, section, item));
+            const caption = createCardCaption(root, section, item);
+            if (caption) thumb.appendChild(caption);
 
             card.appendChild(thumb);
             grid.appendChild(card);
@@ -2899,6 +2923,12 @@ function createHub(section, preferredNode) {
         HUB_STATE.selected[HUB_STATE.activeSection].clear();
         renderHub(root);
     };
+    const allClear = createEl("button", "anima-hub-button", "All Clear");
+    allClear.type = "button";
+    allClear.onclick = () => {
+        Object.values(HUB_STATE.selected).forEach(selected => selected?.clear?.());
+        renderHub(root);
+    };
     const copySelected = createEl("button", "anima-hub-button", "Copy Selected");
     copySelected.type = "button";
     copySelected.onclick = async () => {
@@ -2912,6 +2942,7 @@ function createHub(section, preferredNode) {
     apply.type = "button";
     apply.onclick = async () => applyCurrentSelection(root);
     buttonRow.appendChild(clear);
+    buttonRow.appendChild(allClear);
     buttonRow.appendChild(copySelected);
     buttonRow.appendChild(addCombo);
     buttonRow.appendChild(apply);
