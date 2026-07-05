@@ -1,6 +1,7 @@
 import { app } from "../../scripts/app.js";
 import { SELECTOR_RANDOM_PROPERTY } from "./anima_selector_random.js";
 import { openAnimaHub } from "./anima_hub.js";
+import { openRandomScopePopover, randomScopeSummary, styleScopeButton } from "./anima_random_scope.js";
 
 const PROMPT_NODE_CONFIGS = {
     AnimaCharacterSpec: {
@@ -165,6 +166,19 @@ function styleToggleButton(button, node, section, label) {
     button.style.color = enabled ? "#e0f2fe" : "#a1a1aa";
 }
 
+function styleRangeButton(button, node, section) {
+    styleScopeButton(button, node, section);
+    button.style.minHeight = "28px";
+    button.style.borderRadius = "7px";
+    button.style.border = "1px solid rgba(255,255,255,0.10)";
+    button.style.background = "rgba(255,255,255,0.04)";
+    button.style.color = randomScopeSummary(node, section) === "范围 全部" ? "#a1a1aa" : "#bae6fd";
+    button.style.fontSize = "12px";
+    button.style.fontWeight = "800";
+    button.style.cursor = "pointer";
+    button.style.pointerEvents = "auto";
+}
+
 function addPromptBuilderActionPanel(node, config) {
     if (!node || !config) return null;
     const existing = node._animaPromptBuilderPanelWidget;
@@ -200,14 +214,27 @@ function addPromptBuilderActionPanel(node, config) {
     const grid = document.createElement("div");
     grid.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;";
     const toggleButtons = [];
+    const rangeButtons = [];
     config.toggles.forEach(([section, label]) => {
+        const cell = document.createElement("div");
+        cell.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) 74px;gap:5px;min-width:0;";
         const toggle = createButton("", () => {
             setRandomEnabled(node, section, !isRandomEnabled(node, section));
             styleToggleButton(toggle, node, section, label);
         });
         styleToggleButton(toggle, node, section, label);
         toggleButtons.push([toggle, section, label]);
-        grid.appendChild(toggle);
+        const range = createButton("", () => {
+            openRandomScopePopover(range, node, section, label, () => {
+                styleRangeButton(range, node, section);
+                refreshNode(node);
+            });
+        });
+        styleRangeButton(range, node, section);
+        rangeButtons.push([range, section]);
+        cell.appendChild(toggle);
+        cell.appendChild(range);
+        grid.appendChild(cell);
     });
     if (config.toggles.length % 2 === 0) {
         const spacer = document.createElement("div");
@@ -229,6 +256,7 @@ function addPromptBuilderActionPanel(node, config) {
     widget.computedHeight = 10 + rowCount * 34;
     widget.__animaPromptBuilderRefresh = () => {
         toggleButtons.forEach(([button, section, label]) => styleToggleButton(button, node, section, label));
+        rangeButtons.forEach(([button, section]) => styleRangeButton(button, node, section));
     };
     node._animaPromptBuilderPanelWidget = widget;
     return widget;

@@ -1475,6 +1475,7 @@ except ImportError:
     Image = None
 
 SELECTOR_RANDOM_PROPERTY = "anima_selector_random"
+SELECTOR_RANDOM_SCOPE_PROPERTY = "anima_selector_random_scope"
 
 SELECTOR_RANDOM_INPUTS = {
     "AnimaArtistTagSelector": {"artist": "artist_tags"},
@@ -1592,54 +1593,285 @@ ANIMA_DETAIL_DATA_FILES = {
     "lighting": "lighting_data.js",
 }
 
-def _load_anima_detail_random_lines(section):
-    filename = ANIMA_DETAIL_DATA_FILES.get(section)
-    if not filename:
+ANIMA_RANDOM_DATA_FILES = {
+    "artist": "data.js",
+    "character": "character_data.js",
+    "clothing": "clothing_data.js",
+    "background": "background_data.js",
+    "pose": "pose_data.js",
+    "composition": "composition_data.js",
+    "expression": "expression_data.js",
+    "lighting": "lighting_data.js",
+}
+
+_ANIMA_TAXONOMY_CACHE = {}
+_ANIMA_RANDOM_ROWS_CACHE = {}
+
+def _selector_random_scope_ids(workflow_node, section):
+    if not isinstance(workflow_node, dict):
         return []
+    properties = workflow_node.get("properties")
+    if not isinstance(properties, dict):
+        return []
+    state = properties.get(SELECTOR_RANDOM_SCOPE_PROPERTY)
+    if not isinstance(state, dict):
+        return []
+    value = state.get(section)
+    if isinstance(value, dict):
+        value = value.get("ids")
+    if not isinstance(value, list):
+        return []
+    normalized = []
+    seen = set()
+    for item in value:
+        item_id = str(item or "").strip()
+        if not item_id or item_id == "all" or item_id in seen:
+            continue
+        seen.add(item_id)
+        normalized.append(item_id)
+    return normalized
+
+def _extract_js_array(content, fallback=None):
+    try:
+        start = content.index("[")
+        data, _ = json.JSONDecoder().raw_decode(content[start:])
+        return data if isinstance(data, list) else (fallback or [])
+    except Exception:
+        return fallback or []
+
+def _load_random_js_rows(filename):
+    if filename in _ANIMA_RANDOM_ROWS_CACHE:
+        return _ANIMA_RANDOM_ROWS_CACHE[filename]
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "js", filename)
     if not os.path.exists(path):
         return []
     try:
         with open(path, "r", encoding="utf-8") as f:
-            content = f.read()
-        match = re.search(r"=\s*(\[[\s\S]*?\])\s*;", content)
-        if not match:
-            return []
-        rows = json.loads(match.group(1))
-        lines = []
-        for item in rows if isinstance(rows, list) else []:
-            if not isinstance(item, dict):
-                continue
-            tags = str(item.get("tags") or "").strip()
-            if tags:
-                lines.append(tags)
-        return lines
+            rows = [item for item in _extract_js_array(f.read()) if isinstance(item, dict)]
+        _ANIMA_RANDOM_ROWS_CACHE[filename] = rows
+        return rows
     except Exception as e:
-        print(f"[Anima Tools] Failed to read random {section} tags: {e}")
+        print(f"[Anima Tools] Failed to read random data {filename}: {e}")
         return []
 
-def _selector_random_text(composer, section):
-    if section in ANIMA_DETAIL_DATA_FILES:
-        import random
-        lines = _load_anima_detail_random_lines(section)
-        if not lines:
-            return "", []
-        text = random.SystemRandom().choice(lines)
-        if text and not text.rstrip().endswith(","):
-            text = f"{text},"
-        return text, [{"name": text.rstrip(", "), "tags": text}]
+def _taxonomy_section_block(content, section):
+    marker = f"{section}:"
+    start = content.find(marker)
+    if start < 0:
+        return ""
+    bracket = content.find("[", start)
+    if bracket < 0:
+        return ""
+    depth = 0
+    in_string = False
+    escape = False
+    for index in range(bracket, len(content)):
+        char = content[index]
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+            continue
+        if char == "[":
+            depth += 1
+        elif char == "]":
+            depth -= 1
+            if depth == 0:
+                return content[bracket:index + 1]
+    return ""
 
-    selected, text = composer._resolve_prompt_data(
-        section == "artist",
-        section == "character",
-        section == "clothing",
-        section == "background",
-        section == "pose",
-        "trigger",
-        -1,
-        1,
-    )
-    return text, selected.get(section, [])
+def _load_taxonomy_categories(section):
+    if section in _ANIMA_TAXONOMY_CACHE:
+        return _ANIMA_TAXONOMY_CACHE[section]
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "js", "anima_taxonomy.js")
+    categories = []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        block = _taxonomy_section_block(content, section)
+        pattern = re.compile(r'\{\s*id:\s*"([^"]+)"\s*,\s*label:\s*"([^"]+)"\s*,\s*keywords:\s*(\[[^\]]*\])\s*\}', re.S)
+        for match in pattern.finditer(block):
+            try:
+                keywords = json.loads(match.group(3))
+            except Exception:
+                keywords = []
+            categories.append({
+                "id": match.group(1),
+                "label": match.group(2),
+                "keywords": [str(item) for item in keywords],
+            })
+    except Exception as e:
+        print(f"[Anima Tools] Failed to read taxonomy for {section}: {e}")
+    _ANIMA_TAXONOMY_CACHE[section] = categories
+    return categories
+
+def _normalize_random_text(value):
+    return str(value or "").lower().replace("_", " ").replace("-", " ")
+
+def _random_item_text(item):
+    parts = [
+        item.get("name"),
+        item.get("name_zh"),
+        item.get("copyright"),
+        item.get("copyright_name"),
+        item.get("gender"),
+        item.get("trigger"),
+        item.get("tags"),
+        item.get("tags_zh"),
+    ]
+    if item.get("hair"):
+        parts.append(f"{item.get('hair')} hair hair {item.get('hair')}")
+    if item.get("eye"):
+        parts.append(f"{item.get('eye')} eyes eye {item.get('eye')}")
+    for key in ("traits", "categories", "taxonomyLabels"):
+        value = item.get(key)
+        if isinstance(value, list):
+            parts.extend(value)
+    return _normalize_random_text(" ".join(str(part) for part in parts if part))
+
+def _item_matches_random_category(section, item, category_id):
+    categories = _load_taxonomy_categories(section)
+    category = next((entry for entry in categories if entry.get("id") == category_id), None)
+    if not category:
+        return False
+    text = _random_item_text(item)
+    return any(_normalize_random_text(keyword) in text for keyword in category.get("keywords") or [])
+
+def _filter_random_base_items(section, rows, scope_ids):
+    if not scope_ids:
+        return rows
+    static_ids = {category.get("id") for category in _load_taxonomy_categories(section)}
+    requested_static_ids = [category_id for category_id in scope_ids if category_id in static_ids]
+    if not requested_static_ids:
+        return []
+    return [
+        item for item in rows
+        if any(_item_matches_random_category(section, item, category_id) for category_id in requested_static_ids)
+    ]
+
+def _custom_card_matches_scope(card, scope_ids):
+    taxonomy_ids = card.get("taxonomyIds")
+    if not isinstance(taxonomy_ids, list):
+        return False
+    return any(str(category_id) in scope_ids for category_id in taxonomy_ids)
+
+def _load_random_custom_cards(section, scope_ids):
+    if not scope_ids:
+        return []
+    try:
+        data = load_custom_hub_data()
+        rows = data.get("cards", {}).get(section, [])
+    except Exception as e:
+        print(f"[Anima Tools] Failed to read custom random cards for {section}: {e}")
+        return []
+    return [
+        card for card in rows
+        if isinstance(card, dict) and _custom_card_matches_scope(card, scope_ids)
+    ]
+
+def _custom_random_entry(composer, section, item):
+    item_id = str(item.get("id") or item.get("hubKey") or "").strip()
+    title = str(item.get("name") or item.get("title") or item.get("trigger") or item.get("tags") or "Custom").strip()
+    trigger_parts = composer._split_prompt_tokens(item.get("trigger"))
+    tag_parts = composer._split_prompt_tokens(item.get("tags"))
+    prompt_parts = trigger_parts or tag_parts
+    entry = {
+        "section": section,
+        "key": f"custom:{section}:{item_id or title}",
+        "title": title,
+        "subtitle": "Custom",
+        "preview": str(item.get("preview") or ""),
+        "prompt_parts": prompt_parts,
+    }
+    if section == "character":
+        entry["trigger_parts"] = prompt_parts
+        entry["tag_parts"] = tag_parts
+    return entry if prompt_parts else None
+
+def _detail_random_entry(composer, section, item):
+    item_id = str(item.get("id") or "").strip()
+    title = str(item.get("name_zh") or item.get("name") or item.get("tags") or "").strip()
+    prompt_parts = composer._split_prompt_tokens(item.get("tags"))
+    if not title or not prompt_parts:
+        return None
+    return {
+        "section": section,
+        "key": f"{section}:{item_id or title}",
+        "title": title,
+        "subtitle": str(item.get("name") or ""),
+        "preview": str(item.get("preview") or ""),
+        "prompt_parts": prompt_parts,
+    }
+
+def _random_entry_from_item(composer, section, item):
+    if item.get("isCustom") or item.get("source") in ("custom", "custom_combo"):
+        return _custom_random_entry(composer, section, item)
+    if section == "artist":
+        return composer._artist_entry(item)
+    if section == "character":
+        return composer._character_entry(item, composer._load_json_object("character_official_data.json"))
+    if section == "clothing":
+        return composer._clothing_entry(item)
+    if section == "background":
+        return composer._background_entry(item)
+    if section == "pose":
+        return composer._pose_entry(item)
+    if section in ANIMA_DETAIL_DATA_FILES:
+        return _detail_random_entry(composer, section, item)
+    return None
+
+def _join_random_entry_text(composer, entry, section):
+    parts = composer._entry_parts(entry, section, "trigger")
+    output = []
+    seen = set()
+    for part in parts:
+        text = str(part or "").strip()
+        key = text.lower()
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        output.append(text)
+    result = ", ".join(output)
+    if result and not result.rstrip().endswith(","):
+        result = f"{result},"
+    return result
+
+def _load_anima_detail_random_lines(section):
+    filename = ANIMA_DETAIL_DATA_FILES.get(section)
+    if not filename:
+        return []
+    return [
+        str(item.get("tags") or "").strip()
+        for item in _load_random_js_rows(filename)
+        if str(item.get("tags") or "").strip()
+    ]
+
+def _selector_random_text(composer, section, scope_ids=None):
+    import random
+
+    filename = ANIMA_RANDOM_DATA_FILES.get(section)
+    if not filename:
+        return "", []
+
+    scope_ids = scope_ids or []
+    rows = _load_random_js_rows(filename)
+    rows = _filter_random_base_items(section, rows, scope_ids)
+    rows = rows + _load_random_custom_cards(section, scope_ids)
+    if not rows:
+        return "", []
+
+    item = random.SystemRandom().choice(rows)
+    entry = _random_entry_from_item(composer, section, item)
+    if not entry:
+        return "", []
+    text = _join_random_entry_text(composer, entry, section)
+    return text, [entry] if text else []
 
 def _record_selector_random(extra_pnginfo, node_id, class_type, section, input_name, text, selected):
     if not isinstance(extra_pnginfo, dict):
@@ -1683,7 +1915,8 @@ def _resolve_anima_selector_random_nodes(prompt, extra_pnginfo, composer):
             current_value = inputs.get(input_name)
             if isinstance(current_value, list):
                 continue
-            text, selected = _selector_random_text(composer, section)
+            scope_ids = _selector_random_scope_ids(workflow_node, section)
+            text, selected = _selector_random_text(composer, section, scope_ids)
             if not text:
                 continue
             inputs[input_name] = text

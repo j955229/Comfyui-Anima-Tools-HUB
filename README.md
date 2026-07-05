@@ -150,7 +150,7 @@ TextCombinerTwo.text -> CLIP Text Encode positive
 
 ## 隨機功能
 
-目前隨機以大分類為單位：
+隨機開關對應欄位如下：
 
 - 畫師隨機到 artist 欄位
 - 人物隨機到 name 欄位
@@ -161,7 +161,7 @@ TextCombinerTwo.text -> CLIP Text Encode positive
 - 光線隨機到 lighting 欄位
 - 構圖隨機到 composition 欄位
 
-子分類範圍隨機仍在設計中。目標是讓使用者可指定「全部」或多個子分類，避免在大量子分類中使用過長下拉選單。
+每個隨機開關旁有 `范围` 小按鈕，可選擇「全部」或多個子分類。面板支援搜尋，也會讀取使用者新增的自定小分類。沒有選擇子分類時會維持原本全部資料抽取。
 
 ## LoRA 工具
 

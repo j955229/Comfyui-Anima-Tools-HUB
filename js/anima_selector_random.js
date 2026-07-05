@@ -1,5 +1,6 @@
 import { t } from "./i18n.js";
 import { setWidgetValue } from "./anima_apply_tags.js";
+import { openRandomScopePopover, randomScopeSummary, styleScopeButton } from "./anima_random_scope.js";
 
 export const SELECTOR_RANDOM_PROPERTY = "anima_selector_random";
 
@@ -124,6 +125,18 @@ function styleToggle(button, enabled) {
     `;
 }
 
+function styleRangeButton(button, node, section) {
+    styleScopeButton(button, node, section);
+    button.style.cssText = `
+        ${baseButtonStyle()}
+        flex: 0 0 74px;
+        background: rgba(255,255,255,0.04);
+        border-color: rgba(255,255,255,0.10);
+        color: ${randomScopeSummary(node, section) === "范围 全部" ? "#a1a1aa" : "#bae6fd"};
+        box-shadow: none;
+    `;
+}
+
 export function addSelectorActionRow(node, config) {
     const {
         section,
@@ -213,8 +226,23 @@ export function addSelectorActionRow(node, config) {
         updateToggle();
     });
 
+    const rangeButton = document.createElement("button");
+    rangeButton.type = "button";
+    const updateRange = () => styleRangeButton(rangeButton, node, section);
+    updateRange();
+    rangeButton.addEventListener("pointerdown", stopNodeDrag);
+    rangeButton.addEventListener("mousedown", stopNodeDrag);
+    rangeButton.addEventListener("click", event => {
+        stopNodeDrag(event);
+        openRandomScopePopover(rangeButton, node, section, "", () => {
+            updateRange();
+            refreshNode(node);
+        });
+    });
+
     row.appendChild(openButton);
     row.appendChild(toggleButton);
+    row.appendChild(rangeButton);
 
     const widget = node.addDOMWidget(`anima_${section}_selector_actions`, "div", row, {
         serialize: false,
@@ -223,7 +251,10 @@ export function addSelectorActionRow(node, config) {
         setValue: () => {},
     });
     widget.__animaSelectorActionSection = section;
-    widget.__animaSelectorRefresh = updateToggle;
+    widget.__animaSelectorRefresh = () => {
+        updateToggle();
+        updateRange();
+    };
     widget.serialize = false;
     widget.computeSize = (width) => [width, 32];
     widget.computedHeight = 32;
