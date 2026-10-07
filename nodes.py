@@ -727,15 +727,15 @@ class AnimaSceneCollector:
         formatted_lines = []
         background_cleaned = _anima_clean_prompt_tags(background)
         if background_cleaned:
-            formatted_lines.append(f"background: {background_cleaned}")
+            formatted_lines.append(background_cleaned)
 
         lighting_cleaned = _anima_clean_prompt_tags(lighting)
         if lighting_cleaned:
-            formatted_lines.append(f"lighting: {lighting_cleaned}")
+            formatted_lines.append(lighting_cleaned)
 
         composition_cleaned = _anima_clean_prompt_tags(composition)
         if composition_cleaned:
-            formatted_lines.append(f"composition: {composition_cleaned}")
+            formatted_lines.append(composition_cleaned)
 
         return {"ui": {"anima_selector_tags": [selector_tags]}, "result": ("\n\n".join(formatted_lines),)}
 
@@ -769,7 +769,7 @@ class AnimaFinalAssembler:
                     all_chars[int(key.replace("character", ""))] = str(value).strip()
                 except ValueError:
                     pass
-        return [f"character{number}: {all_chars[number]}" for number in sorted(all_chars.keys())]
+        return [all_chars[number] for number in sorted(all_chars.keys())]
 
     def assemble_final(self, scene, tags, lora_trigger, artist, character1=None, **kwargs):
         selector_tags = {
@@ -784,7 +784,7 @@ class AnimaFinalAssembler:
         prompt_lines = []
         tags_cleaned = _anima_clean_prompt_tags(tags)
         if tags_cleaned:
-            prompt_lines.append(f"tags: {tags_cleaned}")
+            prompt_lines.append(tags_cleaned)
 
         lora_cleaned = _anima_clean_prompt_tags(lora_trigger)
         if lora_cleaned:
@@ -999,18 +999,18 @@ class AnimaPromptComposer:
         return rng.sample(data, count)
 
     def _artist_entry(self, item):
-        name = str(item.get("name") or "").strip()
+        prompt = str(item.get("prompt") or item.get("tag") or "").strip()
+        name = str(item.get("name") or prompt.removeprefix("@") or "").strip()
         if not name:
             return None
-        partition = item.get("p") or 1
-        item_id = item.get("id") or ""
+        item_id = item.get("slug") or item.get("id") or ""
         return {
             "section": "artist",
             "key": f"artist:{item_id or name}",
             "title": name,
             "subtitle": f"{item.get('post_count', 0)} works" if item.get("post_count") else "",
-            "preview": f"https://fastly.jsdelivr.net/gh/ThetaCursed/Anima-Assets@main/images/{partition}/{item_id}.webp" if item_id else "",
-            "prompt_parts": [f"@{name}"],
+            "preview": str(item.get("imageUrl") or item.get("preview") or ""),
+            "prompt_parts": [prompt or f"@{name}"],
         }
 
     def _character_entry(self, item, official_data):
@@ -1258,7 +1258,9 @@ class AnimaPromptComposer:
     ):
         import random
 
-        artist_data = self._load_js_array("data.js")
+        artist_data = []
+        if self._truthy(enable_artist, True) and self._int_value(artist_count, 1) > 0:
+            artist_data = _load_artist_rows()
         character_data = self._load_js_array("character_data.js")
         clothing_data = self._load_js_array("clothing_data.js")
         background_data = self._load_js_array("background_data.js")
@@ -1612,7 +1614,6 @@ ANIMA_DETAIL_DATA_FILES = {
 }
 
 ANIMA_RANDOM_DATA_FILES = {
-    "artist": "data.js",
     "character": "character_data.js",
     "clothing": "clothing_data.js",
     "background": "background_data.js",
@@ -1924,11 +1925,11 @@ def _selector_random_text(composer, section, scope_ids=None):
     import random
 
     filename = ANIMA_RANDOM_DATA_FILES.get(section)
-    if not filename:
+    if not filename and section != "artist":
         return "", []
 
     scope_ids = scope_ids or []
-    rows = _load_random_js_rows(filename)
+    rows = _load_artist_rows() if section == "artist" else _load_random_js_rows(filename)
     rows = _filter_random_base_items(section, rows, scope_ids)
     rows = rows + _load_random_custom_cards(section, scope_ids)
     rows = rows + _load_random_favorite_items(section, scope_ids)
@@ -2347,6 +2348,48 @@ def _get_mooshie_indices_base(manifest: dict) -> str:
     release_prefix = str(manifest.get("releasePrefix") or "20260425_anima_all_artists").strip("/")
     return f"{image_base_url}/{release_prefix}/indices"
 
+def _get_mooshie_search(manifest):
+    search_path = str((manifest.get("searchIndex") or {}).get("path") or "search.json").lstrip("/")
+    url = f"{_get_mooshie_indices_base(manifest)}/{search_path}"
+    return _load_cached_public_json(f"search:{url}", url)
+
+def _load_artist_rows():
+    now = time.time()
+    with _mooshie_json_cache_lock:
+        cached = _mooshie_json_cache.get("artist_rows")
+        if cached and now - cached.get("time", 0) < _mooshie_json_cache_ttl:
+            return cached["data"]
+
+    try:
+        manifest = _get_mooshie_manifest()
+        data = _get_mooshie_search(manifest)
+        if not isinstance(data, list):
+            raise ValueError("Mooshie search index must be an array")
+        image_base = _get_mooshie_indices_base(manifest).removesuffix("/indices")
+        rows = []
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            prompt = str(item.get("tag") or "").strip()
+            name = prompt.removeprefix("@").strip() or str(item.get("slug") or "").strip()
+            if not name:
+                continue
+            image_id = item.get("imageId")
+            rows.append({
+                **item,
+                "name": name,
+                "prompt": prompt or f"@{name}",
+                "source": "mooshie",
+                "post_count": item.get("postCount", 0),
+                "imageUrl": item.get("imageUrl") or (f"{image_base}/images/{image_id}.avif" if image_id else ""),
+            })
+        with _mooshie_json_cache_lock:
+            _mooshie_json_cache["artist_rows"] = {"time": now, "data": rows}
+        return rows
+    except Exception as e:
+        print(f"[Anima Tools] Failed to load Mooshie random artist data: {e}")
+        return []
+
 @PromptServer.instance.routes.get("/anima-tools/artist/mooshie/manifest")
 async def get_mooshie_artist_manifest_api(request):
     try:
@@ -2359,9 +2402,7 @@ async def get_mooshie_artist_manifest_api(request):
 async def get_mooshie_artist_search_api(request):
     try:
         manifest = _get_mooshie_manifest()
-        search_path = str((manifest.get("searchIndex") or {}).get("path") or "search.json").lstrip("/")
-        url = f"{_get_mooshie_indices_base(manifest)}/{search_path}"
-        data = _load_cached_public_json(f"search:{search_path}", url)
+        data = _get_mooshie_search(manifest)
         return web.json_response(data)
     except Exception as e:
         print(f"[Anima Tools] Error fetching Mooshie artist search index: {e}")

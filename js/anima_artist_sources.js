@@ -1,22 +1,16 @@
-import "./data.js";
-
 const ARTIST_SOURCE_STORAGE_KEY = "anima-hub-artist-source";
 const MOOSHIE_MANIFEST_URL = "/anima-tools/artist/mooshie/manifest";
 const MOOSHIE_SEARCH_URL = "/anima-tools/artist/mooshie/search";
 
 export const ARTIST_SOURCES = [
-    { id: "theta", label: "Theta" },
     { id: "mooshie", label: "Mooshie" },
-    { id: "merged", label: "Merged" },
 ];
 
-let activeArtistSource = localStorage.getItem(ARTIST_SOURCE_STORAGE_KEY) || "theta";
+localStorage.setItem(ARTIST_SOURCE_STORAGE_KEY, "mooshie");
 let mooshieManifestPromise = null;
 let mooshieSearchPromise = null;
 let artistSourceStatus = {
-    theta: "",
     mooshie: "Not loaded",
-    merged: "",
 };
 
 function normalizeArtistName(value) {
@@ -24,18 +18,6 @@ function normalizeArtistName(value) {
         .replace(/^@/, "")
         .replace(/^by\s+/i, "")
         .trim();
-}
-
-function normalizeKey(value) {
-    return normalizeArtistName(value)
-        .replace(/[_\s]+/g, " ")
-        .toLowerCase();
-}
-
-function thetaImageUrl(item) {
-    if (!item?.id) return "";
-    const partition = item.p || item.partition || 1;
-    return `https://fastly.jsdelivr.net/gh/ThetaCursed/Anima-Assets@main/images/${partition}/${item.id}.webp`;
 }
 
 function mooshieImageUrl(manifest, imageId) {
@@ -59,24 +41,6 @@ function mooshieImageUrls(item, manifest) {
         urls.push(mooshieImageUrl(manifest, firstImageId.replace(/-p1$/, "-p2")));
     }
     return [...new Set(urls)];
-}
-
-function normalizeThetaArtist(item) {
-    const name = normalizeArtistName(item?.name);
-    return {
-        ...item,
-        section: "artist",
-        source: "theta",
-        sourceLabel: "Theta",
-        sourceKey: name,
-        hubKey: `theta:${name}`,
-        name,
-        prompt: `@${name}`,
-        post_count: item?.post_count ?? 0,
-        postCount: item?.post_count ?? 0,
-        imageUrl: item?.imageUrl || thetaImageUrl(item),
-        aliases: Array.isArray(item?.aliases) ? item.aliases : [],
-    };
 }
 
 function setMooshieFailureStatus(error) {
@@ -145,72 +109,18 @@ async function loadMooshieArtists() {
     return mooshieSearchPromise;
 }
 
-function loadThetaArtists() {
-    const rows = Array.isArray(window.galleryData) ? window.galleryData : [];
-    artistSourceStatus.theta = `${rows.length.toLocaleString()} artists`;
-    return rows.map(normalizeThetaArtist);
-}
-
-function mergeArtists(thetaArtists, mooshieArtists) {
-    const merged = new Map();
-    thetaArtists.forEach(item => {
-        merged.set(normalizeKey(item.prompt || item.name), {
-            ...item,
-            source: "merged",
-            sourceLabel: "Theta",
-            hubKey: `merged:${normalizeKey(item.prompt || item.name)}`,
-        });
-    });
-    mooshieArtists.forEach(item => {
-        const key = normalizeKey(item.prompt || item.name);
-        const existing = merged.get(key);
-        if (!existing) {
-            merged.set(key, {
-                ...item,
-                source: "merged",
-                sourceLabel: "Mooshie",
-                hubKey: `merged:${key}`,
-            });
-            return;
-        }
-        merged.set(key, {
-            ...existing,
-            source: "merged",
-            sourceLabel: "Merged",
-            post_count: Math.max(existing.post_count || 0, item.post_count || 0),
-            postCount: Math.max(existing.postCount || 0, item.postCount || 0),
-            imageUrl: item.imageUrl || existing.imageUrl,
-            imageUrls: item.imageUrls?.length ? item.imageUrls : existing.imageUrls,
-            mooshie: item,
-            theta: existing,
-            aliases: [...new Set([...(existing.aliases || []), ...(item.aliases || [])])],
-        });
-    });
-    const result = Array.from(merged.values()).sort((a, b) => (b.post_count || 0) - (a.post_count || 0));
-    artistSourceStatus.merged = artistSourceStatus.mooshie.startsWith("Failed")
-        ? `${result.length.toLocaleString()} artists (Theta only; Mooshie failed)`
-        : `${result.length.toLocaleString()} artists`;
-    return result;
-}
-
 export function getActiveArtistSource() {
-    return ARTIST_SOURCES.some(source => source.id === activeArtistSource) ? activeArtistSource : "theta";
+    return "mooshie";
 }
 
-export function setActiveArtistSource(source) {
-    activeArtistSource = ARTIST_SOURCES.some(item => item.id === source) ? source : "theta";
-    localStorage.setItem(ARTIST_SOURCE_STORAGE_KEY, activeArtistSource);
+export function setActiveArtistSource() {
+    localStorage.setItem(ARTIST_SOURCE_STORAGE_KEY, "mooshie");
 }
 
-export function getArtistSourceStatus(source = getActiveArtistSource()) {
-    return artistSourceStatus[source] || "";
+export function getArtistSourceStatus() {
+    return artistSourceStatus.mooshie;
 }
 
-export async function getArtistDataForSource(source = getActiveArtistSource()) {
-    const thetaArtists = loadThetaArtists();
-    if (source === "theta") return thetaArtists;
-
-    const mooshieArtists = await loadMooshieArtists();
-    if (source === "mooshie") return mooshieArtists;
-    return mergeArtists(thetaArtists, mooshieArtists);
+export async function getArtistDataForSource() {
+    return loadMooshieArtists();
 }

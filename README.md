@@ -110,7 +110,25 @@ flowchart LR
 - `prompt_string`：完整 prompt，包含 tags、lora_trigger、artist、character、scene，結尾會保留空白行，方便再接 LLM 自然語言。
 - `content_string`：只輸出 character + scene，可接給 LLM 生成自然語句。
 
-`lora_trigger` 和 `artist` 都以裸行輸出，不額外加欄位名稱。
+所有內容都以裸行輸出，不再加上 `tags:`、`character1:`、`background:`、`lighting:`、`composition:` 等欄位名稱。多角色依輸入編號排序，各段之間保留空白行。
+
+例如輸出：
+
+```text
+masterpiece, best quality, 1girl
+
+my_lora_trigger
+
+@dairi
+
+hatsune_miku, blue hair, school uniform
+
+classroom
+
+soft lighting
+
+upper body
+```
 
 ## LLM 工作流接法
 
@@ -191,7 +209,7 @@ nodes.py                         Python 節點與後端 API
 anima_lora_api.py                LoRA 管理與預覽 API
 js/anima_hub.js                  Anima Tools Hub 主介面
 js/anima_prompt_builder.js       Prompt Builder 節點前端按鈕與動態角色入口
-js/anima_artist_sources.js       Theta / Mooshie / Merged 畫師來源
+js/anima_artist_sources.js       Mooshie 畫師來源
 js/anima_character_sources.js    Animadex 人物來源
 js/anima_taxonomy.js             分類與子分類規則
 js/anima_target_resolver.js      Hub 套用目標解析
@@ -200,11 +218,11 @@ img/hub/*                        Hub 內建範例圖片
 ComfyUI user/anima_tools/uploads 使用者新增卡片的壓縮圖片
 ```
 
+畫師只保留 Mooshie 來源，Hub 與隨機畫師都使用同一份資料索引（後端快取一小時）。Theta 與 Merged 混合來源已移除；舊的來源設定會自動切換到 Mooshie。
+
 ## 資料來源與致謝
 
 - [AnimaDex](https://github.com/zetaneko/AnimaDex)：人物資料來源與人物卡片互動參考。
-- [Anima-Style-Explorer](https://github.com/ThetaCursed/Anima-Style-Explorer)：Theta 畫師資料來源。
-- [Anima-Assets](https://github.com/ThetaCursed/Anima-Assets)：部分畫師圖片資產來源。
 - [Mooshie Anima](https://anima.mooshieblob.com/)：Mooshie 畫師資料與卡片切換互動參考。
 - [AnimaTags-DB](https://github.com/nregret/AnimaTags-DB)：背景、姿勢等 tag 與圖片資料來源之一。
 - [Dressing-doll](https://github.com/nregret/Dressing-doll)：服裝圖片與 tag 資料來源之一。

@@ -317,7 +317,7 @@ function getSectionData(section) {
 function getItemKey(section, item) {
     if (item?.hubKey) return String(item.hubKey);
     if (item?.isCustom && item?.id) return `custom:${item.id}`;
-    if (section === "artist") return `${item?.source || "theta"}:${item?.sourceKey || item?.name || item?.prompt || ""}`;
+    if (section === "artist") return `${item?.source || "mooshie"}:${item?.sourceKey || item?.name || item?.prompt || ""}`;
     return String(item?.id || item?.name || item?.tags || "");
 }
 
@@ -423,12 +423,6 @@ function getSearchText(section, item) {
     ].join(" ").toLowerCase();
 }
 
-function getArtistImageUrl(item) {
-    if (!item?.id) return "";
-    const partition = item.p || item.partition || 1;
-    return `https://fastly.jsdelivr.net/gh/ThetaCursed/Anima-Assets@main/images/${partition}/${item.id}.webp`;
-}
-
 function getCharacterImageUrl(item) {
     if (!item?.name) return "";
     const rawName = item.copyright ? `${item.name}, ${item.copyright}` : item.name;
@@ -436,7 +430,7 @@ function getCharacterImageUrl(item) {
 }
 
 function getItemImageUrl(section, item) {
-    if (section === "artist") return item?.imageUrl || getArtistImageUrl(item);
+    if (section === "artist") return item?.imageUrl || item?.preview || "";
     if (section === "character") return item?.imageUrl || item?.preview || getCharacterImageUrl(item);
     return item?.preview || item?.imageUrl || item?.thumbnailUrl || "";
 }
@@ -2200,7 +2194,7 @@ function renderViewButtons(root) {
 }
 
 function sectionUsesSourceSelect(section) {
-    return section === "artist";
+    return section === "artist" && ARTIST_SOURCES.length > 1;
 }
 
 function sectionUsesSourceStatus(section) {
