@@ -779,7 +779,7 @@ class AnimaFinalAssembler:
         scene_cleaned = str(scene or "").strip()
         if scene_cleaned:
             content_lines.append(scene_cleaned)
-        content_string = "\n\n".join(content_lines)
+        content_block = "\n\n".join(content_lines)
 
         prompt_lines = []
         tags_cleaned = _anima_clean_prompt_tags(tags)
@@ -794,8 +794,12 @@ class AnimaFinalAssembler:
         if artist_cleaned:
             prompt_lines.append(artist_cleaned)
 
-        if content_string:
-            prompt_lines.append(content_string)
+        if content_block:
+            prompt_lines.append(content_block)
+
+        content_string = _anima_clean_prompt_tags(
+            ", ".join(line for block in prompt_lines for line in block.splitlines())
+        )
 
         prompt_string = "\n\n".join(prompt_lines).rstrip()
         if prompt_string:

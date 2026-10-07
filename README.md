@@ -108,11 +108,11 @@ flowchart LR
 出口包含：
 
 - `prompt_string`：完整 prompt，包含 tags、lora_trigger、artist、character、scene，結尾會保留空白行，方便再接 LLM 自然語言。
-- `content_string`：只輸出 character + scene，可接給 LLM 生成自然語句。
+- `content_string`：完整的單行 tag prompt，依序包含 tags、lora_trigger、artist、所有 character、scene。以 `, ` 串接，不換行、不加分類名稱，跳過空內容，可直接接 CLIP Text Encode 或 LLM。
 
-所有內容都以裸行輸出，不再加上 `tags:`、`character1:`、`background:`、`lighting:`、`composition:` 等欄位名稱。多角色依輸入編號排序，各段之間保留空白行。
+兩個出口都不會加上 `tags:`、`character1:`、`background:`、`lighting:`、`composition:` 等欄位名稱。多角色依輸入編號排序；`prompt_string` 各段之間保留空白行，`content_string` 則將全部內容串接成單行。
 
-例如輸出：
+例如 `prompt_string` 輸出：
 
 ```text
 masterpiece, best quality, 1girl
@@ -128,6 +128,12 @@ classroom
 soft lighting
 
 upper body
+```
+
+同一組輸入的 `content_string` 輸出：
+
+```text
+masterpiece, best quality, 1girl, my_lora_trigger, @dairi, hatsune_miku, blue hair, school uniform, classroom, soft lighting, upper body
 ```
 
 ## LLM 工作流接法
